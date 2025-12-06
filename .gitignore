@@ -1,0 +1,115 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.conda/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+log.txt
+
+# Cache and temporary files
+cache/
+*.cache
+.cache/
+*.tmp
+*.temp
+
+# Model files (too large for git)
+models/*.llamafile
+models/*.bin
+models/*.gguf
+*.ggml
+
+# Data files (user-specific)
+data/raw/*.pdf
+data/raw/*.docx
+data/raw/*.txt
+data/raw/*.csv
+data/uploads/
+data/processed/
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/uploads/.gitkeep
+!data/processed/.gitkeep
+
+# User credentials
+config/users.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Secrets
+secrets/
+*.pem
+*.key
+
+# Test and coverage
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Streamlit
+.streamlit/
+
+# Conda environment files
+*.conda
+environment.yml
