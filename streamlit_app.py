@@ -448,6 +448,124 @@ def render_documents_page():
                 st.success(f"✅ Uploaded: {uploaded_file.name}")
             
             st.info("💡 Run `python init_cache_data.py` after adding paths to config to re-index")
+        
+        st.divider()
+        
+        # URL Web Scraper section - Admin only
+        st.subheader("🌐 Web Scraper")
+        st.markdown("Scrape content from web pages and add to your knowledge base")
+        
+        with st.form("url_scraper_form"):
+            url_input = st.text_input(
+                "Enter URL to scrape",
+                placeholder="https://example.com/documentation",
+                help="Enter a URL to scrape. The scraper will extract content and optionally follow TOC links."
+            )
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                traverse_toc = st.checkbox(
+                    "Traverse Table of Contents",
+                    value=True,
+                    help="Follow navigation/TOC links to scrape multiple pages"
+                )
+            with col2:
+                toc_selector = st.text_input(
+                    "TOC CSS Selector (optional)",
+                    value=".table-of-contents a, .toc a, nav a",
+                    help="CSS selector to identify TOC/navigation links"
+                )
+            
+            scrape_submitted = st.form_submit_button("🕷️ Scrape URL", use_container_width=True)
+            
+            if scrape_submitted and url_input:
+                try:
+                    with st.spinner(f"🔍 Scraping content from {url_input}..."):
+                        import yaml
+                        # Load config for the web loader
+                        with open("config/init_config.yaml", 'r') as f:
+                            config = yaml.safe_load(f)
+                        
+                        from src.data.loaders.web_scraper import EnhancedWebLoader
+                        
+                        loader = EnhancedWebLoader(
+                            config=config,
+                            base_url=url_input,
+                            toc_selector=toc_selector,
+                            traverse_toc=traverse_toc
+                        )
+                        
+                        documents = loader.load()
+                        
+                        if documents:
+                            # Save scraped documents to data/raw
+                            save_dir = Path("data/raw/scraped")
+                            save_dir.mkdir(parents=True, exist_ok=True)
+                            
+                            from urllib.parse import urlparse
+                            domain = urlparse(url_input).netloc.replace(".", "_")
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            
+                            saved_files = []
+                            for idx, doc in enumerate(documents):
+                                filename = f"{domain}_{timestamp}_{idx+1}.md"
+                                filepath = save_dir / filename
+                                with open(filepath, "w", encoding="utf-8") as f:
+                                    f.write(f"# Source: {doc.metadata.get('source', url_input)}\n\n")
+                                    f.write(doc.page_content)
+                                saved_files.append(filename)
+                            
+                            st.success(f"✅ Successfully scraped {len(documents)} page(s)!")
+                            
+                            # Now add to RAG index directly for immediate use
+                            if st.session_state.rag_components:
+                                with st.spinner("📊 Adding to search index..."):
+                                    from src.data.data_preprocessing import DataPreprocessor
+                                    from rank_bm25 import BM25Okapi
+                                    
+                                    # Process documents into chunks
+                                    preprocessor = DataPreprocessor(config)
+                                    new_chunks = preprocessor.process_documents({'scraped_url': documents})
+                                    
+                                    if new_chunks:
+                                        # Add to existing chunks list
+                                        existing_chunks = st.session_state.rag_components.original_chunks
+                                        existing_chunks.extend(new_chunks)
+                                        
+                                        # Get retriever components
+                                        retriever = st.session_state.rag_components.retriever
+                                        
+                                        # 1. Add to FAISS vectorstore directly (bypassing cache)
+                                        vector_retriever = retriever.vector_retriever
+                                        if vector_retriever.vectorstore:
+                                            # Add new documents to existing FAISS index
+                                            new_texts = [chunk.page_content for chunk in new_chunks]
+                                            new_metadatas = [chunk.metadata for chunk in new_chunks]
+                                            vector_retriever.vectorstore.add_texts(new_texts, metadatas=new_metadatas)
+                                            vector_retriever.texts.extend(new_texts)
+                                            vector_retriever.sources.extend([chunk.metadata.get("source", "scraped") for chunk in new_chunks])
+                                            logging.info(f"Added {len(new_chunks)} documents to FAISS vectorstore")
+                                        
+                                        # 2. Rebuild BM25 index with all chunks (bypassing cache)
+                                        bm25_retriever = retriever.bm25_retriever
+                                        bm25_retriever.chunks = existing_chunks
+                                        tokenized_chunks = [chunk.page_content.split() for chunk in existing_chunks]
+                                        bm25_retriever.bm25_index = BM25Okapi(tokenized_chunks)
+                                        logging.info(f"Rebuilt BM25 index with {len(existing_chunks)} total chunks")
+                                        
+                                        st.success(f"✅ Added {len(new_chunks)} chunks to search index! You can now ask questions about this content.")
+                                    else:
+                                        st.warning("⚠️ No chunks created from scraped content")
+                            
+                            with st.expander("📄 Saved Files"):
+                                for fname in saved_files:
+                                    st.markdown(f"- `{fname}`")
+                        else:
+                            st.warning("⚠️ No content was extracted from the URL")
+                            
+                except Exception as e:
+                    st.error(f"❌ Error scraping URL: {str(e)}")
+                    logging.error(f"Web scraper error: {str(e)}")
     else:
         st.info("📋 View-only mode. Contact an administrator to upload documents.")
     

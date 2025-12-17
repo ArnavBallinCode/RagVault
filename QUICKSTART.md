@@ -76,6 +76,15 @@ Open and run `inference_notebook.ipynb`
    ```
 3. Re-run `python init_cache_data.py`
 
+## Web Scraping
+
+Scrape websites directly from the UI (Admin only):
+
+1. Go to **📁 Documents** page
+2. Enter a URL in the **🌐 Web Scraper** section
+3. Click **🕷️ Scrape URL**
+4. Content is indexed immediately - ask questions right away!
+
 ## Configuration Files
 
 - `config/init_config.yaml` - Main configuration (models, paths, processing)

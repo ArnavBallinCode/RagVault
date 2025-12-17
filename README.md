@@ -41,6 +41,13 @@ RagVault enables organizations to build a secure, private knowledge base from in
 - AI-powered embeddings using Nomic Embed
 - FAISS vector store for efficient similarity search
 
+### Web Scraping
+- **URL Web Scraper**: Scrape content from any website directly from the UI
+- Automatic Table of Contents (TOC) traversal for multi-page documentation
+- Configurable CSS selectors for navigation links
+- Immediate indexing of scraped content for instant querying
+- Saved as Markdown files for persistence
+
 ### AI Model Integration
 - Local LLM via Llamafile (Mistral Nemo 12B)
 - Hybrid RAG pipeline combining BM25 and vector retrieval
@@ -329,6 +336,20 @@ retrieval:
 1. Place documents in `data/raw/` or `data/uploads/`
 2. Update `config/init_config.yaml` with the document paths
 3. Run `python init_cache_data.py` to reindex
+
+### Web Scraping (Admin Only)
+
+Scrape content from websites directly through the web interface:
+
+1. Log in as admin and navigate to **📁 Documents**
+2. In the **🌐 Web Scraper** section, enter a URL to scrape
+3. Configure options:
+   - **Traverse Table of Contents**: Follow navigation links to scrape multiple pages
+   - **TOC CSS Selector**: Customize which links to follow (e.g., `nav a`, `.sidebar a`)
+4. Click **🕷️ Scrape URL**
+5. Content is automatically:
+   - Saved to `data/raw/scraped/` as Markdown files
+   - Indexed immediately for querying (no restart needed)
 
 ### Command-Line Query
 
