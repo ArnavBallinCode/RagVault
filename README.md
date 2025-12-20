@@ -136,6 +136,68 @@ RagVault enables organizations to build a secure, private knowledge base from in
 5. **Generation**: LLM generates response grounded in retrieved context
 6. **Citation**: Sources attached to response for verification
 
+### URL Web Scraper - Technical Deep Dive
+
+The URL Web Scraper enables real-time ingestion of web content directly into the RAG system.
+
+#### Architecture
+
+```
++-------------------+     +-------------------+     +-------------------+
+|   User Input      |     | EnhancedWebLoader |     |   Docling         |
+|   (URL + Options) |---->|   (Async Crawler) |---->|   (HTML→Markdown) |
++-------------------+     +-------------------+     +-------------------+
+                                   |
+                    +--------------+--------------+
+                    |                             |
+              +-----v-----+                 +-----v-----+
+              | TOC Links |                 |  Content  |
+              | Traversal |                 | Extraction|
+              +-----------+                 +-----------+
+                    |                             |
+                    +-------------+---------------+
+                                  v
+                    +----------------------------+
+                    |     Direct Indexing        |
+                    |  (Bypasses Cache System)   |
+                    +----------------------------+
+                          |             |
+                    +-----v-----+ +-----v-----+
+                    |   FAISS   | |   BM25    |
+                    | add_texts | |  Rebuild  |
+                    +-----------+ +-----------+
+```
+
+#### Components
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Crawler | aiohttp + asyncio | Asynchronous page fetching |
+| Parser | BeautifulSoup | TOC link extraction |
+| Converter | Docling | HTML to Markdown conversion |
+| Chunker | RecursiveCharacterTextSplitter | Text segmentation |
+| Vector Index | FAISS.add_texts() | Live vector addition |
+| Keyword Index | BM25Okapi | Full index rebuild |
+
+#### Indexing Pipeline
+
+1. **Scrape**: `EnhancedWebLoader` fetches URL content asynchronously
+2. **Convert**: Docling converts HTML to clean Markdown
+3. **Save**: Content saved to `data/raw/scraped/` as `.md` files
+4. **Chunk**: `RecursiveCharacterTextSplitter` segments content (bypasses cache)
+5. **Embed**: FAISS `add_texts()` generates embeddings and adds to vector store
+6. **Index**: BM25 index rebuilt with all chunks including new content
+7. **Ready**: Content immediately available for RAG queries
+
+#### Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Traverse TOC | Follow navigation links | `true` |
+| TOC Selector | CSS selector for nav links | `.toc a, nav a` |
+| Chunk Size | Characters per chunk | From `init_config.yaml` |
+| Chunk Overlap | Overlap between chunks | From `init_config.yaml` |
+
 ---
 
 ## Installation

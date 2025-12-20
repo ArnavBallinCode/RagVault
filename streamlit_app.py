@@ -520,42 +520,73 @@ def render_documents_page():
                             # Now add to RAG index directly for immediate use
                             if st.session_state.rag_components:
                                 with st.spinner("📊 Adding to search index..."):
-                                    from src.data.data_preprocessing import DataPreprocessor
-                                    from rank_bm25 import BM25Okapi
-                                    
-                                    # Process documents into chunks
-                                    preprocessor = DataPreprocessor(config)
-                                    new_chunks = preprocessor.process_documents({'scraped_url': documents})
-                                    
-                                    if new_chunks:
-                                        # Add to existing chunks list
-                                        existing_chunks = st.session_state.rag_components.original_chunks
-                                        existing_chunks.extend(new_chunks)
+                                    try:
+                                        from langchain_text_splitters import RecursiveCharacterTextSplitter
+                                        from langchain_core.documents import Document
+                                        from rank_bm25 import BM25Okapi
                                         
-                                        # Get retriever components
-                                        retriever = st.session_state.rag_components.retriever
+                                        # Create text splitter for chunking
+                                        text_splitter = RecursiveCharacterTextSplitter(
+                                            chunk_size=config['processing']['chunk_size'],
+                                            chunk_overlap=config['processing']['chunk_overlap']
+                                        )
                                         
-                                        # 1. Add to FAISS vectorstore directly (bypassing cache)
-                                        vector_retriever = retriever.vector_retriever
-                                        if vector_retriever.vectorstore:
-                                            # Add new documents to existing FAISS index
-                                            new_texts = [chunk.page_content for chunk in new_chunks]
-                                            new_metadatas = [chunk.metadata for chunk in new_chunks]
-                                            vector_retriever.vectorstore.add_texts(new_texts, metadatas=new_metadatas)
-                                            vector_retriever.texts.extend(new_texts)
-                                            vector_retriever.sources.extend([chunk.metadata.get("source", "scraped") for chunk in new_chunks])
-                                            logging.info(f"Added {len(new_chunks)} documents to FAISS vectorstore")
+                                        # Process scraped documents into chunks directly (bypass cache)
+                                        new_chunks = []
+                                        for doc in documents:
+                                            chunks = text_splitter.split_documents([doc])
+                                            new_chunks.extend(chunks)
                                         
-                                        # 2. Rebuild BM25 index with all chunks (bypassing cache)
-                                        bm25_retriever = retriever.bm25_retriever
-                                        bm25_retriever.chunks = existing_chunks
-                                        tokenized_chunks = [chunk.page_content.split() for chunk in existing_chunks]
-                                        bm25_retriever.bm25_index = BM25Okapi(tokenized_chunks)
-                                        logging.info(f"Rebuilt BM25 index with {len(existing_chunks)} total chunks")
+                                        st.info(f"📝 Created {len(new_chunks)} chunks from scraped content")
+                                        logging.info(f"Created {len(new_chunks)} chunks from {len(documents)} scraped documents")
                                         
-                                        st.success(f"✅ Added {len(new_chunks)} chunks to search index! You can now ask questions about this content.")
-                                    else:
-                                        st.warning("⚠️ No chunks created from scraped content")
+                                        if new_chunks:
+                                            # Add to existing chunks list
+                                            existing_chunks = st.session_state.rag_components.original_chunks
+                                            chunk_count_before = len(existing_chunks)
+                                            existing_chunks.extend(new_chunks)
+                                            
+                                            st.info(f"📊 Chunks before: {chunk_count_before}, after: {len(existing_chunks)}")
+                                            
+                                            # Get retriever components
+                                            retriever = st.session_state.rag_components.retriever
+                                            
+                                            # 1. Add to FAISS vectorstore directly
+                                            vector_retriever = retriever.vector_retriever
+                                            if vector_retriever.vectorstore is not None:
+                                                new_texts = [chunk.page_content for chunk in new_chunks]
+                                                new_metadatas = [chunk.metadata for chunk in new_chunks]
+                                                
+                                                st.info(f"🔍 Adding {len(new_texts)} texts to vector store...")
+                                                vector_retriever.vectorstore.add_texts(new_texts, metadatas=new_metadatas)
+                                                
+                                                # Update internal tracking lists
+                                                if hasattr(vector_retriever, 'texts'):
+                                                    vector_retriever.texts.extend(new_texts)
+                                                if hasattr(vector_retriever, 'sources'):
+                                                    vector_retriever.sources.extend([m.get("source", url_input) for m in new_metadatas])
+                                                
+                                                st.success("✅ Added to vector search index")
+                                                logging.info(f"Added {len(new_chunks)} documents to FAISS vectorstore")
+                                            else:
+                                                st.warning("⚠️ Vector store not initialized - skipping vector indexing")
+                                            
+                                            # 2. Rebuild BM25 index with all chunks
+                                            bm25_retriever = retriever.bm25_retriever
+                                            bm25_retriever.chunks = existing_chunks
+                                            tokenized_chunks = [chunk.page_content.split() for chunk in existing_chunks]
+                                            bm25_retriever.bm25_index = BM25Okapi(tokenized_chunks)
+                                            st.success(f"✅ Rebuilt BM25 index with {len(existing_chunks)} total chunks")
+                                            logging.info(f"Rebuilt BM25 index with {len(existing_chunks)} total chunks")
+                                            
+                                            st.success(f"🎉 Successfully indexed {len(new_chunks)} chunks! You can now ask questions about this content.")
+                                        else:
+                                            st.warning("⚠️ No chunks created from scraped content")
+                                    except Exception as idx_error:
+                                        st.error(f"❌ Indexing error: {str(idx_error)}")
+                                        logging.exception("Failed to index scraped content")
+                                        import traceback
+                                        st.code(traceback.format_exc())
                             
                             with st.expander("📄 Saved Files"):
                                 for fname in saved_files:
@@ -575,21 +606,51 @@ def render_documents_page():
     st.subheader("📚 Indexed Documents")
     
     if st.session_state.rag_components:
+        # Show files from data/raw
         docs_path = Path("data/raw")
         if docs_path.exists():
             files = [f for f in docs_path.glob("*") if f.is_file() and not f.name.startswith('.')]
             
-            for f in files:
-                col1, col2, col3 = st.columns([3, 1, 1])
-                with col1:
-                    icon = "📄" if f.suffix == ".txt" else "📕" if f.suffix == ".pdf" else "📘"
-                    st.markdown(f"{icon} **{f.name}**")
-                with col2:
-                    st.caption(f"{f.stat().st_size / 1024:.1f} KB")
-                with col3:
-                    st.caption(datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d"))
-        else:
-            st.warning("No documents found in data/raw/")
+            if files:
+                for f in files:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        icon = "📄" if f.suffix == ".txt" else "📕" if f.suffix == ".pdf" else "📘"
+                        st.markdown(f"{icon} **{f.name}**")
+                    with col2:
+                        st.caption(f"{f.stat().st_size / 1024:.1f} KB")
+                    with col3:
+                        st.caption(datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d"))
+            else:
+                st.info("No documents in data/raw/")
+        
+        # Show scraped URL documents
+        scraped_path = Path("data/raw/scraped")
+        if scraped_path.exists():
+            scraped_files = [f for f in scraped_path.glob("*.md") if f.is_file()]
+            
+            if scraped_files:
+                st.divider()
+                st.subheader("🌐 Scraped URLs")
+                
+                for f in sorted(scraped_files, key=lambda x: x.stat().st_mtime, reverse=True):
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"🔗 **{f.name}**")
+                    with col2:
+                        st.caption(f"{f.stat().st_size / 1024:.1f} KB")
+                    with col3:
+                        st.caption(datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M"))
+        
+        # Show current index stats
+        st.divider()
+        st.subheader("📊 Index Statistics")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total Chunks in Index", len(st.session_state.rag_components.original_chunks))
+        with col2:
+            if hasattr(st.session_state.rag_components.retriever.vector_retriever, 'texts'):
+                st.metric("Vector Store Docs", len(st.session_state.rag_components.retriever.vector_retriever.texts))
 
 # =============================================================================
 # SETTINGS PAGE (View for all, Edit for Admin)
