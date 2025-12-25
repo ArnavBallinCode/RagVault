@@ -3,6 +3,7 @@ from langchain_community.llms import Llamafile
 from langchain_core.documents import Document
 from typing import List, Dict, Optional
 import logging
+import os
 from queue import Queue
 import threading
 
@@ -50,8 +51,15 @@ class ResponseGenerator:
         self.llm_queue = Queue()
         self.llm_lock = threading.Lock()
         
+        # Get LLM URL - prefer environment variable (for Docker), fallback to config
+        llm_url = os.environ.get(
+            "LLAMAFILE_SERVER_URL", 
+            self.config["retrieval"]["llamafile_server_base_url"]
+        )
+        self.logger.info(f"Using LLM server at: {llm_url}")
+        
         # Initialize primary LLM instance
-        self.llm = Llamafile(base_url=self.config["retrieval"]["llamafile_server_base_url"], seed=2024)
+        self.llm = Llamafile(base_url=llm_url, seed=2024)
 
     def generate_answer(self, 
                        query: str,

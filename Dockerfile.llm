@@ -1,0 +1,36 @@
+# Lightweight container for LLM Server (Llamafile)
+# =================================================
+# This container runs the Mistral Nemo LLM using llamafile.
+# The model file is mounted as a volume (not baked into image).
+
+FROM debian:bookworm-slim
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install minimal dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Create models directory (model will be mounted as volume)
+RUN mkdir -p models
+
+# Expose LLM server port
+EXPOSE 8081
+
+# Health check for LLM server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
+    CMD curl -f http://localhost:8081/health || exit 1
+
+# Entry point - run llamafile server via sh (APE format)
+# -ngl 0 = CPU only (no GPU in Docker on Mac)
+ENTRYPOINT ["sh", "/app/models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile", \
+    "--server", \
+    "--nobrowser", \
+    "--host", "0.0.0.0", \
+    "--port", "8081", \
+    "-ngl", "0"]

@@ -1,0 +1,59 @@
+# Docker build context exclusions
+# ================================
+
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+venv/
+ENV/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Cache (mounted as volume)
+cache/
+
+# Data (mounted as volume)
+data/
+
+# Models (mounted as volume - 8.5GB+)
+models/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Documentation (not needed in container)
+*.md
+!requirements*.md
+LICENSE
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
+# Misc
+*.pkl
+*.pickle

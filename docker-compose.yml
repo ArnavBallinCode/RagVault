@@ -1,0 +1,66 @@
+# Secure Offline RAG System - Docker Compose Configuration
+# =========================================================
+# 
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f        # View logs
+#   docker-compose ps             # Check status
+#
+# Note: The LLM model must exist at ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
+
+services:
+  # LLM Server (Llamafile with Mistral Nemo)
+  llm-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm
+    container_name: ragvault-llm
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./models:/app/models:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+        reservations:
+          memory: 8G
+
+  # Streamlit Web Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ragvault-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+      - ./config:/app/config
+      - ./logs:/app/logs
+    environment:
+      # Override LLM URL for Docker networking
+      - LLAMAFILE_SERVER_URL=http://llm-server:8081
+    depends_on:
+      llm-server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  default:
+    name: ragvault-network

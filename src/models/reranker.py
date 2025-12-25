@@ -3,6 +3,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from typing import List, Dict, Optional
 from langchain_core.documents import Document
 import logging
+import os
 from dataclasses import dataclass
 from tqdm import tqdm
 
@@ -65,13 +66,62 @@ class Reranker:
             - Moves model to specified device
         """
         self.config = config
-        self.device =  config['model']['device_rerank']
         self.model_name = config['model']['rerank_model']
         self.batch_size = config['processing']['batch_size_reranking']
         
         self.logger = logging.getLogger(__name__)
         
+        # Auto-detect the best available device with fallback to CPU
+        # Environment variable FORCE_CPU can override to CPU mode (for Docker)
+        self.device = self._get_best_device(config['model'].get('device_rerank', 'auto'))
+        
         self._initialize_model()
+    
+    def _get_best_device(self, requested_device: str) -> str:
+        """
+        Determine the best available device for computation.
+        
+        Args:
+            requested_device: Requested device from config ('mps', 'cuda', 'cpu', or 'auto')
+            
+        Returns:
+            str: The actual device to use
+        """
+        # Check for environment variable override (useful for Docker)
+        if os.environ.get('FORCE_CPU', '').lower() in ('1', 'true', 'yes'):
+            self.logger.info("FORCE_CPU environment variable set, using CPU")
+            return 'cpu'
+        
+        # If auto, try to find the best device
+        if requested_device == 'auto':
+            if torch.cuda.is_available():
+                self.logger.info("CUDA available, using GPU")
+                return 'cuda'
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.logger.info("MPS available, using Apple Silicon GPU")
+                return 'mps'
+            else:
+                self.logger.info("No GPU available, using CPU")
+                return 'cpu'
+        
+        # Try to use the requested device, with fallback to CPU
+        if requested_device == 'mps':
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.logger.info("Using MPS (Apple Silicon GPU)")
+                return 'mps'
+            else:
+                self.logger.warning("MPS requested but not available, falling back to CPU")
+                return 'cpu'
+        elif requested_device == 'cuda':
+            if torch.cuda.is_available():
+                self.logger.info("Using CUDA GPU")
+                return 'cuda'
+            else:
+                self.logger.warning("CUDA requested but not available, falling back to CPU")
+                return 'cpu'
+        else:
+            self.logger.info(f"Using device: {requested_device}")
+            return requested_device
 
     def _initialize_model(self) -> None:
         """

@@ -202,7 +202,40 @@ The URL Web Scraper enables real-time ingestion of web content directly into the
 
 ## Installation
 
-### macOS (Apple Silicon / Intel)
+### Option 1: Docker (Recommended)
+
+The easiest way to run the RAG system. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/ArnavBallinCode/RagVault.git
+cd RagVault
+
+# 2. Download the LLM model (8.5 GB) - one time only
+mkdir -p models
+curl -L -o models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
+  "https://huggingface.co/Mozilla/Mistral-Nemo-Instruct-2407-llamafile/resolve/main/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile"
+
+# 3. Start with one command
+./docker-start.sh
+```
+
+**Access:** http://localhost:8501
+
+**Docker Commands:**
+| Command | Purpose |
+|---------|---------|
+| `./docker-start.sh` | Start the system |
+| `./docker-start.sh --download` | Download LLM model (8.5 GB) |
+| `./docker-start.sh --stop` | Stop containers |
+| `./docker-start.sh --logs` | View logs |
+| `./docker-start.sh --cleanup` | Remove containers and images |
+
+---
+
+### Option 2: Manual Installation
+
+#### macOS (Apple Silicon / Intel)
 
 ```bash
 # 1. Install LibreOffice (required for Office document conversion)

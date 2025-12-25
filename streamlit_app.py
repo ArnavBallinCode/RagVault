@@ -363,7 +363,11 @@ def render_chat_page():
     
     # Check LLM status
     if st.session_state.rag_components:
-        llm_url = st.session_state.rag_components.process_config['retrieval']['llamafile_server_base_url']
+        # Use env var if set (for Docker), otherwise use config file
+        llm_url = os.environ.get(
+            'LLAMAFILE_SERVER_URL',
+            st.session_state.rag_components.process_config['retrieval']['llamafile_server_base_url']
+        )
         st.session_state.llm_status = check_llm_status(llm_url)
     
     # Status indicator
