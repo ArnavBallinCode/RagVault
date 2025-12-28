@@ -1,5 +1,8 @@
+# MIT License
+# Copyright (c) 2024 Arnav Angarkar
+
 """
-Data handling modules for the Trustii project.
+Data handling modules for the RagVault project.
 
 This package contains modules for data ingestion and preprocessing.
 """

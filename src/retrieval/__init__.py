@@ -1,5 +1,8 @@
+# MIT License
+# Copyright (c) 2024 Arnav Angarkar
+
 """
-Retrieval modules for the RAG project.
+Retrieval modules for the RagVault project.
 
 This package contains different retrieval implementations including BM25,
 vector-based, and hybrid approaches.
