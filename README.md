@@ -1,575 +1,374 @@
-# RagVault - Secure Offline RAG System
+<p align="center">
+  <img src="https://img.shields.io/badge/🔒-RagVault-blue?style=for-the-badge&labelColor=1a1a2e" alt="RagVault"/>
+</p>
 
-A fully offline, privacy-focused Retrieval-Augmented Generation (RAG) system designed for secure enterprise knowledge management. Process and query internal documents without any internet connectivity or external API dependencies.
+<h1 align="center">RagVault</h1>
 
-## Table of Contents
+<p align="center">
+  <strong>🔐 Secure Offline RAG System for Enterprise Knowledge Management</strong>
+</p>
 
-1. [Overview](#overview)
-2. [Features](#features)
-3. [System Requirements](#system-requirements)
-4. [Architecture](#architecture)
-5. [Installation](#installation)
-6. [Configuration](#configuration)
-7. [Usage](#usage)
-8. [Supported File Types](#supported-file-types)
-9. [Project Structure](#project-structure)
-10. [Troubleshooting](#troubleshooting)
-11. [License](#license)
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-architecture">Architecture</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-usage">Usage</a>
+</p>
 
----
-
-## Overview
-
-RagVault enables organizations to build a secure, private knowledge base from internal documents. Unlike cloud-based solutions, all processing occurs locally on your hardware, ensuring complete data privacy and security.
-
-### Core Capabilities
-
-- **Document Ingestion**: Process PDF, DOCX, TXT, and other formats into searchable chunks
-- **Semantic Search**: Hybrid retrieval using both vector similarity and keyword matching (BM25)
-- **Response Generation**: Local LLM generates answers based solely on your indexed documents
-- **Access Control**: Role-based authentication with Admin and User roles
-- **Complete Offline Operation**: No internet required after initial setup
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat&logo=python&logoColor=white" alt="Python"/>
+  <img src="https://img.shields.io/badge/License-MIT-green?style=flat" alt="License"/>
+  <img src="https://img.shields.io/badge/Offline-100%25-success?style=flat" alt="Offline"/>
+  <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker&logoColor=white" alt="Docker"/>
+</p>
 
 ---
 
-## Features
+## 🚀 Quick Start
 
-### Document Upload and Indexing
-- Multi-format support (PDF, DOCX, TXT, Markdown)
-- Automatic text extraction and preprocessing
-- Intelligent chunking with configurable overlap
-- AI-powered embeddings using Nomic Embed
-- FAISS vector store for efficient similarity search
-
-### Web Scraping
-- **URL Web Scraper**: Scrape content from any website directly from the UI
-- Automatic Table of Contents (TOC) traversal for multi-page documentation
-- Configurable CSS selectors for navigation links
-- Immediate indexing of scraped content for instant querying
-- Saved as Markdown files for persistence
-
-### AI Model Integration
-- Local LLM via Llamafile (Mistral Nemo 12B)
-- Hybrid RAG pipeline combining BM25 and vector retrieval
-- Neural reranking with BGE Reranker
-- Document-grounded responses with source citations
-
-### Interactive Interface
-- Modern web UI built with Streamlit
-- Natural language query interface
-- Source citation and document referencing
-- Confidence scoring for responses
-- Role-based access control
-
-### Security and Privacy
-- 100% offline operation
-- No external API calls or telemetry
-- Local data processing and storage
-- Role-based user authentication
-
----
-
-## System Requirements
-
-### Minimum Hardware
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 4 cores | 8+ cores |
-| RAM | 16 GB | 32 GB |
-| Storage | 20 GB free | 50 GB+ SSD |
-| GPU | Not required | 8GB+ VRAM (optional) |
-
-### Software Requirements
-
-| Platform | Python | Package Manager | Document Converter |
-|----------|--------|-----------------|-------------------|
-| macOS | 3.10+ | conda/pip | LibreOffice |
-| Linux | 3.10+ | conda/pip | LibreOffice |
-| Windows | 3.10+ | conda/pip | LibreOffice |
-
-### GPU Acceleration
-
-- **macOS (Apple Silicon)**: Uses Metal Performance Shaders (MPS) automatically
-- **Linux/Windows (NVIDIA)**: Requires CUDA 12.x and compatible drivers
-- **CPU-only**: Fully functional but slower inference
-
----
-
-## Architecture
-
-### System Components
-
-```
-+-------------------+     +-------------------+     +-------------------+
-|   Web Interface   |     |    RAG Pipeline   |     |    LLM Server     |
-|   (Streamlit)     |<--->|   (Python Core)   |<--->|   (Llamafile)     |
-+-------------------+     +-------------------+     +-------------------+
-                                   |
-                    +--------------+--------------+
-                    |              |              |
-              +-----v-----+  +-----v-----+  +-----v-----+
-              |   FAISS   |  |   BM25    |  |  Reranker |
-              |  Vectors  |  |   Index   |  |   Model   |
-              +-----------+  +-----------+  +-----------+
-```
-
-### Technology Stack
-
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| Frontend | Streamlit | Web interface with authentication |
-| Embeddings | Nomic Embed v1.5 | Text vectorization (768-dim) |
-| Vector Store | FAISS | Similarity search |
-| Keyword Search | BM25 (rank-bm25) | Lexical matching |
-| Reranking | BGE Reranker v2 | Result refinement |
-| LLM | Mistral Nemo 12B | Response generation |
-| LLM Server | Llamafile | Local model serving |
-| Document Processing | Docling, LangChain | Text extraction and chunking |
-
-### RAG Pipeline Flow
-
-1. **Query Input**: User submits natural language question
-2. **Retrieval**: Hybrid search combines FAISS (semantic) and BM25 (keyword)
-3. **Reranking**: BGE model reorders results by relevance
-4. **Context Assembly**: Top-k chunks assembled as context
-5. **Generation**: LLM generates response grounded in retrieved context
-6. **Citation**: Sources attached to response for verification
-
-### URL Web Scraper - Technical Deep Dive
-
-The URL Web Scraper enables real-time ingestion of web content directly into the RAG system.
-
-#### Architecture
-
-```
-+-------------------+     +-------------------+     +-------------------+
-|   User Input      |     | EnhancedWebLoader |     |   Docling         |
-|   (URL + Options) |---->|   (Async Crawler) |---->|   (HTML→Markdown) |
-+-------------------+     +-------------------+     +-------------------+
-                                   |
-                    +--------------+--------------+
-                    |                             |
-              +-----v-----+                 +-----v-----+
-              | TOC Links |                 |  Content  |
-              | Traversal |                 | Extraction|
-              +-----------+                 +-----------+
-                    |                             |
-                    +-------------+---------------+
-                                  v
-                    +----------------------------+
-                    |     Direct Indexing        |
-                    |  (Bypasses Cache System)   |
-                    +----------------------------+
-                          |             |
-                    +-----v-----+ +-----v-----+
-                    |   FAISS   | |   BM25    |
-                    | add_texts | |  Rebuild  |
-                    +-----------+ +-----------+
-```
-
-#### Components
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| Crawler | aiohttp + asyncio | Asynchronous page fetching |
-| Parser | BeautifulSoup | TOC link extraction |
-| Converter | Docling | HTML to Markdown conversion |
-| Chunker | RecursiveCharacterTextSplitter | Text segmentation |
-| Vector Index | FAISS.add_texts() | Live vector addition |
-| Keyword Index | BM25Okapi | Full index rebuild |
-
-#### Indexing Pipeline
-
-1. **Scrape**: `EnhancedWebLoader` fetches URL content asynchronously
-2. **Convert**: Docling converts HTML to clean Markdown
-3. **Save**: Content saved to `data/raw/scraped/` as `.md` files
-4. **Chunk**: `RecursiveCharacterTextSplitter` segments content (bypasses cache)
-5. **Embed**: FAISS `add_texts()` generates embeddings and adds to vector store
-6. **Index**: BM25 index rebuilt with all chunks including new content
-7. **Ready**: Content immediately available for RAG queries
-
-#### Configuration Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| Traverse TOC | Follow navigation links | `true` |
-| TOC Selector | CSS selector for nav links | `.toc a, nav a` |
-| Chunk Size | Characters per chunk | From `init_config.yaml` |
-| Chunk Overlap | Overlap between chunks | From `init_config.yaml` |
-
----
-
-## Installation
-
-### Option 1: Docker (Recommended)
-
-The easiest way to run the RAG system. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+### Option A: Docker (Recommended)
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/ArnavBallinCode/RagVault.git
-cd RagVault
+git clone https://github.com/ArnavBallinCode/RagVault.git && cd RagVault
 
-# 2. Download the LLM model (8.5 GB) - one time only
-mkdir -p models
-curl -L -o models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
-  "https://huggingface.co/Mozilla/Mistral-Nemo-Instruct-2407-llamafile/resolve/main/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile"
+# Download LLM (8.5 GB, one-time)
+./docker-start.sh --download
 
-# 3. Start with one command
+# Start the system
 ./docker-start.sh
 ```
 
-**Access:** http://localhost:8501
+### Option B: Manual Setup
 
-**Docker Commands:**
-| Command | Purpose |
-|---------|---------|
-| `./docker-start.sh` | Start the system |
-| `./docker-start.sh --download` | Download LLM model (8.5 GB) |
-| `./docker-start.sh --stop` | Stop containers |
-| `./docker-start.sh --logs` | View logs |
-| `./docker-start.sh --cleanup` | Remove containers and images |
+```bash
+# Terminal 1: Start LLM Server
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# Terminal 2: Start Web App
+conda activate rag_project && streamlit run streamlit_app.py
+```
+
+**🌐 Access:** http://localhost:8501  
+**🔑 Login:** `admin` / `admin123`
 
 ---
 
-### Option 2: Manual Installation
+## 🎯 What is RagVault?
 
-#### macOS (Apple Silicon / Intel)
+RagVault is a **fully offline, privacy-first RAG system** that lets you query your documents using AI—without sending data to the cloud.
+
+```
+📄 Your Documents    →    🔍 Smart Search    →    💡 AI Answers
+   (PDF, DOCX, TXT)       (Hybrid Retrieval)      (Local LLM)
+```
+
+### Why RagVault?
+
+| ❌ Cloud RAG Systems | ✅ RagVault |
+|---------------------|------------|
+| Data leaves your network | **100% offline** |
+| Requires API keys | **No external dependencies** |
+| Ongoing subscription costs | **Free & open-source** |
+| Vendor lock-in | **Fully self-hosted** |
+
+---
+
+## ✨ Features
+
+<table>
+<tr>
+<td width="50%">
+
+### 📥 Document Processing
+- PDF, DOCX, TXT, Markdown, CSV
+- Automatic text extraction
+- Intelligent chunking (2000 chars, 200 overlap)
+- Web scraping with TOC traversal
+
+</td>
+<td width="50%">
+
+### 🔍 Hybrid Search
+- **Vector Search**: Semantic understanding
+- **BM25**: Keyword matching
+- **Neural Reranking**: BAAI/bge-reranker-v2-m3
+- Weighted fusion (80% semantic, 20% keyword)
+
+</td>
+</tr>
+<tr>
+<td>
+
+### 🤖 AI Generation
+- **Mistral Nemo 12B** (local LLM)
+- Context-aware responses
+- Source citations
+- 128K token context window
+
+</td>
+<td>
+
+### 🔐 Security
+- Zero data transmission
+- Role-based access control
+- No telemetry or tracking
+- Air-gapped operation support
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🏗️ Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                         USER QUERY                            │
+│                             ↓                                 │
+│  ┌─────────────┐    ┌────────────────┐    ┌───────────────┐ │
+│  │   BM25      │    │                │    │   RERANKER    │ │
+│  │  (keyword)  │───→│  TOP-100 DOCS  │───→│  (neural)     │ │
+│  └─────────────┘    │                │    └───────────────┘ │
+│  ┌─────────────┐    └────────────────┘           ↓          │
+│  │   FAISS     │           ↑              ┌───────────────┐ │
+│  │  (vector)   │───────────┘              │   LLM         │ │
+│  └─────────────┘                          │ (Mistral 12B) │ │
+│                                           └───────────────┘ │
+│                                                  ↓          │
+│                                           GROUNDED ANSWER   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Embeddings** | nomic-ai/nomic-embed-text-v1.5 (768 dim) |
+| **Vector Store** | FAISS |
+| **Lexical Search** | BM25 (rank_bm25) |
+| **Reranker** | BAAI/bge-reranker-v2-m3 |
+| **LLM** | Mistral-Nemo-Instruct-2407 (12B, Q5_K_M) |
+| **UI** | Streamlit |
+| **Runtime** | Python 3.10+ |
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+
+| Requirement | Version |
+|-------------|---------|
+| Python | 3.10+ |
+| RAM | 16GB minimum, 32GB recommended |
+| Storage | 20GB free (for LLM model) |
+| Docker | Optional, for containerized setup |
+
+### Docker Installation
 
 ```bash
-# 1. Install LibreOffice (required for Office document conversion)
-brew install --cask libreoffice
-
-# 2. Clone the repository
+# 1. Clone repository
 git clone https://github.com/ArnavBallinCode/RagVault.git
 cd RagVault
 
-# 3. Create and activate conda environment
+# 2. Download LLM model (8.5 GB)
+./docker-start.sh --download
+
+# 3. Start containers
+./docker-start.sh
+```
+
+### Manual Installation (macOS)
+
+```bash
+# 1. Install dependencies
+brew install --cask libreoffice
+
+# 2. Clone and setup environment
+git clone https://github.com/ArnavBallinCode/RagVault.git
+cd RagVault
 conda create -n ragvault python=3.10 -y
 conda activate ragvault
-
-# 4. Install dependencies
 pip install -r requirements_macos.txt
 
-# 5. Download the LLM model (8.5 GB)
+# 3. Download LLM model
 mkdir -p models
 curl -L -o models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
   "https://huggingface.co/Mozilla/Mistral-Nemo-Instruct-2407-llamafile/resolve/main/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile"
 chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
 
-# 6. Initialize the document cache
+# 4. Initialize cache
 python init_cache_data.py
-
-# 7. Start the LLM server (in a separate terminal)
-./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
-
-# 8. Launch the web interface (in another terminal)
-conda activate ragvault
-streamlit run streamlit_app.py
 ```
 
-### Linux (Ubuntu/Debian)
+### Manual Installation (Linux)
 
 ```bash
 # 1. Install system dependencies
-sudo apt update
-sudo apt install -y libreoffice python3.10 python3.10-venv
+sudo apt update && sudo apt install -y libreoffice python3.10 python3.10-venv
 
-# 2. Clone the repository
+# 2. Clone and setup
 git clone https://github.com/ArnavBallinCode/RagVault.git
 cd RagVault
-
-# 3. Create virtual environment
-python3.10 -m venv venv
-source venv/bin/activate
-
-# 4. Install dependencies
+python3.10 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements_rag.txt
 
-# 5. Download the LLM model
-mkdir -p models
-wget -O models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
-  "https://huggingface.co/Mozilla/Mistral-Nemo-Instruct-2407-llamafile/resolve/main/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile"
-chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
-
-# 6. For NVIDIA GPU support (optional)
-# Ensure CUDA 12.x is installed, then:
-# ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 12 --port 8081
-
-# 7. Initialize and run (same as macOS steps 6-8)
-python init_cache_data.py
-./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081 &
-streamlit run streamlit_app.py
+# 3. Download LLM (same as macOS step 3)
+# 4. Initialize cache (same as macOS step 4)
 ```
-
-### Windows
-
-```powershell
-# 1. Install prerequisites
-# - Download and install Python 3.10 from python.org
-# - Download and install LibreOffice from libreoffice.org
-# - Install Anaconda or Miniconda
-
-# 2. Clone the repository
-git clone https://github.com/ArnavBallinCode/RagVault.git
-cd RagVault
-
-# 3. Create conda environment
-conda create -n ragvault python=3.10 -y
-conda activate ragvault
-
-# 4. Install dependencies (note: use CPU-compatible torch)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements_rag.txt
-
-# 5. Download the LLM model (use browser or curl if available)
-# Save to: models\Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
-
-# 6. Windows-specific: Llamafile may need .exe extension
-# Rename the file to .exe if it doesn't run directly
-
-# 7. Initialize the cache
-python init_cache_data.py
-
-# 8. Start LLM server (in Command Prompt)
-.\models\Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser --port 8081
-
-# 9. Start web interface (in another Command Prompt)
-conda activate ragvault
-streamlit run streamlit_app.py
-```
-
-### Platform-Specific Notes
-
-| Platform | GPU Acceleration | LLM Flag | Config Change |
-|----------|-----------------|----------|---------------|
-| macOS (Apple Silicon) | MPS (automatic) | `-ngl 999` | `device_rerank: "mps"` |
-| macOS (Intel) | CPU only | (none) | `device_rerank: "cpu"` |
-| Linux (NVIDIA) | CUDA | `-ngl 12` to `-ngl 99` | `device_rerank: "cuda"` |
-| Linux (AMD/CPU) | CPU only | (none) | `device_rerank: "cpu"` |
-| Windows (NVIDIA) | CUDA | `-ngl 12` to `-ngl 99` | `device_rerank: "cuda"` |
-| Windows (CPU) | CPU only | (none) | `device_rerank: "cpu"` |
 
 ---
 
-## Configuration
+## 🖥️ Usage
 
-### Main Configuration (config/init_config.yaml)
+### Starting the System
+
+**Docker:**
+```bash
+./docker-start.sh          # Start
+./docker-start.sh --stop   # Stop
+./docker-start.sh --logs   # View logs
+```
+
+**Manual:**
+```bash
+# Terminal 1: LLM Server
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# Terminal 2: Web App
+streamlit run streamlit_app.py
+```
+
+### Web Interface
+
+1. **Login** at http://localhost:8501
+   - Admin: `admin` / `admin123`
+   - User: `user` / `user123`
+
+2. **Upload Documents** (Admin only)
+   - Go to Documents tab
+   - Upload PDF, DOCX, TXT files
+   - Documents are automatically indexed
+
+3. **Ask Questions**
+   - Type your question in the chat
+   - Receive AI-generated answers with sources
+
+4. **Web Scraping** (Admin only)
+   - Enter URLs to scrape
+   - Content is automatically indexed
+
+---
+
+## ⚙️ Configuration
+
+### `config/init_config.yaml`
 
 ```yaml
-# Logging settings
-logging:
-  level: "INFO"
-  show_progress: true
-
-# Model configuration
 model:
   embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"
   rerank_model: "BAAI/bge-reranker-v2-m3"
-  device_rerank: "mps"  # Options: "mps", "cuda", "cpu"
+  device_rerank: "mps"  # mps/cuda/cpu/auto
 
-# Processing parameters
 processing:
   chunk_size: 2000
   chunk_overlap: 200
-  batch_size_embeddings: 32
-  batch_size_reranking: 8
-
-# Paths
-paths:
-  cache_dir: "./cache"
-  data_dir: "./data"
-
-# Document sources
-files:
-  document_paths:
-    - "data/raw/your_document.pdf"
-    - "data/raw/another_file.txt"
 ```
 
-### Retrieval Configuration (config/process_config.yaml)
+### `config/process_config.yaml`
 
 ```yaml
 retrieval:
   llamafile_server_base_url: "http://localhost:8081"
-  send_nb_chunks_to_llm: 3
-  use_bm25: true
   bm25_weight: 0.2
   top_k: 100
   use_reranking: true
-  use_query_expansion: false
 ```
 
 ---
 
-## Usage
-
-### Starting the System
-
-1. Start the LLM server:
-   ```bash
-   ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
-   ```
-
-2. Launch the web interface:
-   ```bash
-   streamlit run streamlit_app.py
-   ```
-
-3. Open http://localhost:8501 in your browser
-
-### Default User Accounts
-
-| Username | Password | Role | Permissions |
-|----------|----------|------|-------------|
-| admin | admin123 | Administrator | Full access, user management, document upload |
-| user | user123 | User | Chat access, view documents |
-
-### Adding Documents
-
-1. Place documents in `data/raw/` or `data/uploads/`
-2. Update `config/init_config.yaml` with the document paths
-3. Run `python init_cache_data.py` to reindex
-
-### Web Scraping (Admin Only)
-
-Scrape content from websites directly through the web interface:
-
-1. Log in as admin and navigate to **📁 Documents**
-2. In the **🌐 Web Scraper** section, enter a URL to scrape
-3. Configure options:
-   - **Traverse Table of Contents**: Follow navigation links to scrape multiple pages
-   - **TOC CSS Selector**: Customize which links to follow (e.g., `nav a`, `.sidebar a`)
-4. Click **🕷️ Scrape URL**
-5. Content is automatically:
-   - Saved to `data/raw/scraped/` as Markdown files
-   - Indexed immediately for querying (no restart needed)
-
-### Command-Line Query
-
-```bash
-python process_single_query.py --query "Your question here"
-```
-
----
-
-## Supported File Types
-
-| Category | Extensions | Notes |
-|----------|------------|-------|
-| Text | .txt, .md | Direct text processing |
-| PDF | .pdf | Extracted via Docling |
-| Microsoft Office | .docx, .doc, .pptx, .ppt, .xlsx | Requires LibreOffice |
-| OpenDocument | .odt | Requires LibreOffice |
-| Code | .py, .js, .ts, .java, .cpp, .go, .rs | Language-aware parsing |
-| Data | .csv, .json | Structured data handling |
-| Web | .html, .htm | HTML parsing |
-| Notebooks | .ipynb | Jupyter notebook support |
-
----
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 RagVault/
+├── streamlit_app.py          # Web UI
+├── initialize_rag.py         # Core orchestration
+├── docker-start.sh           # Docker helper script
 ├── config/
-│   ├── init_config.yaml      # Main configuration
-│   ├── process_config.yaml   # Retrieval settings
-│   └── users.json            # User credentials (auto-generated)
-├── data/
-│   ├── raw/                  # Source documents
-│   ├── uploads/              # User-uploaded files
-│   └── processed/            # Processed outputs
-├── cache/                    # Embeddings and index cache
-├── models/                   # LLM model files
+│   ├── init_config.yaml      # Model settings
+│   └── process_config.yaml   # Retrieval settings
 ├── src/
-│   ├── cache/               # Caching system
-│   ├── data/                # Document processing
-│   │   └── loaders/         # File type handlers
-│   ├── retrieval/           # Search and retrieval
-│   ├── models/              # Reranking models
-│   ├── response/            # Response generation
-│   └── utils/               # Utilities
-├── streamlit_app.py         # Web interface
-├── init_cache_data.py       # Cache initialization
-├── initialize_rag.py        # RAG system setup
-├── process_single_query.py  # CLI query tool
-└── requirements_*.txt       # Dependencies
+│   ├── data/                 # Data ingestion & processing
+│   ├── models/               # Reranker
+│   ├── retrieval/            # BM25, Vector, Hybrid retrievers
+│   └── response/             # LLM response generation
+├── data/raw/                 # Your documents
+├── cache/                    # Embedding cache
+└── models/                   # LLM binary
 ```
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
-### LLM Server Not Starting
+<details>
+<summary><b>LLM Server Offline</b></summary>
 
-- Ensure the llamafile has execute permissions: `chmod +x models/*.llamafile`
-- Check if port 8081 is in use: `lsof -i :8081`
-- Try without GPU layers: remove `-ngl` flag
+Ensure the llamafile is running:
+```bash
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+```
+Check health: `curl http://localhost:8081/health`
+</details>
 
-### Out of Memory Errors
+<details>
+<summary><b>Port Already in Use</b></summary>
 
-- Reduce `batch_size_embeddings` in config (try 16 or 8)
-- Reduce `batch_size_reranking` (try 4)
-- Use CPU instead of GPU: set `device_rerank: "cpu"`
-- Reduce `-ngl` value for LLM (layers on GPU)
+```bash
+lsof -ti:8501 | xargs kill -9
+lsof -ti:8081 | xargs kill -9
+```
+</details>
 
-### LibreOffice Not Found (macOS)
+<details>
+<summary><b>Slow Performance</b></summary>
 
-The system expects LibreOffice at `/Applications/LibreOffice.app/`. If installed elsewhere, the path is automatically detected.
+- Enable GPU acceleration (`device_rerank: mps` or `cuda`)
+- Reduce `top_k` in config
+- Use SSD storage for cache
+</details>
 
-### Slow Performance
+<details>
+<summary><b>Import Errors</b></summary>
 
-- Ensure GPU acceleration is enabled where available
-- Reduce `top_k` retrieval value
-- Decrease `chunk_size` for faster processing
-- Use SSD storage for cache directory
-
-### Import Errors
-
-If you encounter `ModuleNotFoundError`, ensure all dependencies are installed:
 ```bash
 pip install langchain langchain-core langchain-community langchain-huggingface
-pip install faiss-cpu sentence-transformers transformers
-pip install torch torchvision einops
+pip install faiss-cpu sentence-transformers transformers torch
 ```
+</details>
 
 ---
 
-## License
+## 📄 License
 
-MIT License
-
-Copyright (c) 2024 Arnav Angarkar
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+MIT License © 2024 Arnav Angarkar
 
 ---
 
-## Acknowledgments
+## 🙏 Acknowledgments
 
-This project builds upon several open-source technologies:
-
+Built with:
 - [LangChain](https://github.com/langchain-ai/langchain) - RAG framework
-- [FAISS](https://github.com/facebookresearch/faiss) - Vector similarity search
-- [Docling](https://github.com/DS4SD/docling) - Document processing
-- [Llamafile](https://github.com/Mozilla-Ocho/llamafile) - Local LLM serving
-- [Streamlit](https://streamlit.io/) - Web interface framework
-- [Hugging Face Transformers](https://huggingface.co/) - ML models
+- [FAISS](https://github.com/facebookresearch/faiss) - Vector search
+- [Llamafile](https://github.com/Mozilla-Ocho/llamafile) - Local LLM
+- [Streamlit](https://streamlit.io/) - Web interface
+- [Hugging Face](https://huggingface.co/) - ML models
+
+---
+
+<p align="center">
+  <sub>Made with ❤️ by <a href="https://github.com/ArnavBallinCode">Arnav Angarkar</a></sub>
+</p>
