@@ -6,7 +6,7 @@ logging:
   console_logging: true
 
 model:
-  embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"
+  embedding_model_hf: "sentence-transformers/all-MiniLM-L6-v2"  # Fast, reliable, works well with MPS
   rerank_model: "BAAI/bge-reranker-v2-m3"
   device_rerank: "mps"  # Use Apple Metal Performance Shaders for M-series Macs
 

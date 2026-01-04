@@ -54,17 +54,83 @@ class DataIngestion:
     
     def get_document_paths(self) -> List[str]:
         """
-        Retrieve document paths from configuration.
+        Retrieve document paths from configuration AND scan directories.
         
         Returns:
             List[str]: List of document paths to process
             
         Note:
-            Logs the number of documents found for processing
+            - Loads paths from config['files']['document_paths']
+            - Scans data/raw/ for all supported files
+            - Scans data/raw/scraped/ for scraped content
+            - Scans data/uploads/ for uploaded files
+            - Supported extensions: .pdf, .txt, .md, .docx, .csv
+            - Skips files larger than 10MB to avoid memory issues
         """
-        doc_paths = self.config['files']['document_paths']
-        self.logger.info(f"Found {len(doc_paths)} documents for processing")
-        return doc_paths
+        doc_paths = set()
+        
+        # Skip list for known problematic files (cause crashes on macOS)
+        skip_files = {
+            '742762880-Matter-1-3-Core-Specification.pdf',  # Too large, crashes docling
+            'matter_specification.pdf',  # Too large, crashes docling
+        }
+        
+        # Max file size in bytes (10MB to avoid memory crashes)
+        max_file_size = 10 * 1024 * 1024
+        
+        # 1. Add explicitly configured paths
+        configured_paths = self.config['files'].get('document_paths', [])
+        for path in configured_paths:
+            p = Path(path)
+            if p.exists() and p.name not in skip_files:
+                if p.stat().st_size <= max_file_size:
+                    doc_paths.add(str(path))
+                else:
+                    self.logger.warning(f"Skipping {path} - file too large ({p.stat().st_size / 1024 / 1024:.1f}MB)")
+        
+        # 2. Scan data/raw/ directory
+        data_dir = Path(self.config['paths'].get('data_dir', './data'))
+        raw_dir = data_dir / 'raw'
+        uploads_dir = data_dir / 'uploads'
+        
+        # Supported file extensions (excluding CSV - those are for evaluation, not RAG)
+        supported_extensions = {'.pdf', '.txt', '.md', '.docx', '.html'}
+        
+        def should_include(file_path: Path) -> bool:
+            """Check if file should be included"""
+            if file_path.name in skip_files:
+                self.logger.debug(f"Skipping {file_path.name} - in skip list")
+                return False
+            if file_path.stat().st_size > max_file_size:
+                self.logger.warning(f"Skipping {file_path.name} - file too large ({file_path.stat().st_size / 1024 / 1024:.1f}MB)")
+                return False
+            return True
+        
+        # Scan raw directory (excluding scraped subfolder for separate handling)
+        if raw_dir.exists():
+            for file_path in raw_dir.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                    if should_include(file_path):
+                        doc_paths.add(str(file_path))
+        
+        # 3. Scan scraped folder
+        scraped_dir = raw_dir / 'scraped'
+        if scraped_dir.exists():
+            for file_path in scraped_dir.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                    if should_include(file_path):
+                        doc_paths.add(str(file_path))
+        
+        # 4. Scan uploads folder
+        if uploads_dir.exists():
+            for file_path in uploads_dir.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                    if should_include(file_path):
+                        doc_paths.add(str(file_path))
+        
+        doc_paths_list = list(doc_paths)
+        self.logger.info(f"Found {len(doc_paths_list)} documents for processing")
+        return doc_paths_list
     
     def load_documents(self, traverse_toc: bool = True) -> List[Document]:
         """
