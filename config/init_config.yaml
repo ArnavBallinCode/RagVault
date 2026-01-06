@@ -46,6 +46,7 @@ files:
   test_output: "data/processed/submission_test_final.csv"
   document_paths:
     - "data/raw/data.txt"
+    # All files in data/uploads/ are automatically scanned
     # - "data/raw/742762880-Matter-1-3-Core-Specification.pdf"  # Temporarily disabled - causes crash on macOS
 
     

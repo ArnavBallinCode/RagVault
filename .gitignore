@@ -63,6 +63,9 @@ cache/
 *.tmp
 *.temp
 
+# But allow source code cache module
+!src/cache/
+
 # Model files (too large for git)
 models/*.llamafile
 models/*.bin
@@ -72,8 +75,8 @@ models/*.gguf
 # Data files (user-specific)
 data/raw/*.pdf
 data/raw/*.docx
-data/raw/*.txt
-data/raw/*.csv
+# data/raw/*.txt
+# data/raw/*.csv
 data/uploads/
 data/processed/
 
