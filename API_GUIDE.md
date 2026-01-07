@@ -77,13 +77,63 @@ curl "http://localhost:8000/documents"
 **Response:**
 ```json
 {
+  "documents": ["data/uploads/file1.pdf", "data/uploads/file2.txt"],
+  "documents_info": [
+    {"filename": "file1.pdf", "size_mb": 1.5, "path": "..."},
+    {"filename": "file2.txt", "size_mb": 0.1, "path": "..."}
+  ],
+  "count": 2,
   "total_chunks": 46,
-  "documents": ["data.txt", "BeyondGames_ppt.pdf", "Computer_Network.pdf"],
-  "count": 3
+  "max_file_size_mb": 10
 }
 ```
 
-### 5. **Health Check**
+### 5. **Delete Document**
+```bash
+curl -X DELETE "http://localhost:8000/documents/filename.pdf"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Document 'filename.pdf' deleted. Run /refresh to update indices."
+}
+```
+
+### 6. **Clear All Data**
+```bash
+curl -X POST "http://localhost:8000/clear"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "All data cleared. Upload new documents and call /refresh to reinitialize."
+}
+```
+
+### 7. **Get System Limits**
+```bash
+curl "http://localhost:8000/limits"
+```
+
+**Response:**
+```json
+{
+  "max_file_size_mb": 10,
+  "max_total_documents": 20,
+  "supported_formats": [".pdf", ".docx", ".txt", ".md", ".doc"],
+  "recommendations": {
+    "pdf_pages": "Up to 100 pages recommended",
+    "total_memory": "Keep total documents under 50MB to avoid memory issues",
+    "clear_cache": "Use /clear if you encounter memory errors"
+  }
+}
+```
+
+### 8. **Health Check**
 ```bash
 curl "http://localhost:8000/health"
 ```
@@ -107,7 +157,34 @@ curl -X POST "http://localhost:8000/query" \
 
 # 4. Check what's indexed
 curl "http://localhost:8000/documents"
+
+# 5. Delete a document
+curl -X DELETE "http://localhost:8000/documents/mydocument.pdf"
+
+# 6. Clear everything if memory issues
+curl -X POST "http://localhost:8000/clear"
 ```
+
+---
+
+## React Frontend
+
+A modern React frontend is available:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+**Frontend URL**: http://localhost:5173
+
+**Features:**
+- Multi-page app with sidebar navigation
+- Interactive React Flow pipeline visualization
+- Documents page with delete/clear functionality
+- LLM Settings page
+- Configuration page
 
 ---
 
@@ -133,6 +210,14 @@ response = requests.post(
     json={"query": "What is machine learning?", "top_k": 2}
 )
 print(response.json()["answer"])
+
+# Delete document
+response = requests.delete(f"{BASE_URL}/documents/document.pdf")
+print(response.json())
+
+# Clear all
+response = requests.post(f"{BASE_URL}/clear")
+print(response.json())
 ```
 
 ---
