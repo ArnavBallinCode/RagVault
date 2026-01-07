@@ -1130,20 +1130,31 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
 
   useEffect(() => {
     const fetchData = async () => {
+      // Health check is public, always try it
       try {
         const h = await api.health();
         setHealth(h);
         setIsOnline(h.status === 'healthy');
-        const d = await api.getDocuments();
-        setDocuments(d);
       } catch {
         setIsOnline(false);
+        return; // If health fails, don't try documents
+      }
+
+      // Documents require admin role - only fetch if admin
+      if (user.role === 'admin') {
+        try {
+          const d = await api.getDocuments();
+          setDocuments(d);
+        } catch {
+          // Documents fetch failed, but backend is still online
+          console.warn('Could not fetch documents');
+        }
       }
     };
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user.role]);
 
   const handleUpload = useCallback(async (file: File) => {
     setUploadStatus('uploading');
