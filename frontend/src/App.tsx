@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import ReactFlow, {
   type Node,
   type Edge,
@@ -45,6 +46,8 @@ import {
   Database,
   Play,
   Sparkles,
+  MessageCircle,
+  Send,
 } from 'lucide-react';
 
 import { api } from './api/client';
@@ -58,6 +61,7 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Pipeline', badge: null },
+    { path: '/chat', icon: MessageCircle, label: 'Chat', badge: null },
     { path: '/documents', icon: FolderOpen, label: 'Documents', badge: null },
     { path: '/models', icon: Cpu, label: 'LLM Settings', badge: null },
     { path: '/settings', icon: Settings, label: 'Configuration', badge: null },
@@ -331,8 +335,8 @@ const ResultNode = ({ data }: { data: any }) => {
 
         {data.result && (
           <div className="result-full">
-            <div className="answer-box">
-              {data.result.answer}
+            <div className="answer-box markdown-content">
+              <ReactMarkdown>{data.result.answer}</ReactMarkdown>
             </div>
             {data.result.sources.length > 0 && (
               <div className="sources-box">
@@ -360,7 +364,17 @@ const ResultNode = ({ data }: { data: any }) => {
           {copied ? <Check size={14} color="var(--accent-green)" /> : <Copy size={14} />}
         </button>
         <button title="Expand" onClick={() => setExpanded(!expanded)}><Eye size={14} /></button>
-        <button title="Download"><Download size={14} /></button>
+        <button title="Download" onClick={() => {
+          if (data.result?.answer) {
+            const blob = new Blob([data.result.answer], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'response.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        }}><Download size={14} /></button>
       </div>
     </div>
   );
@@ -819,6 +833,162 @@ const ConfigPage = () => (
 );
 
 // ============================================================================
+// CHAT PAGE
+// ============================================================================
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: string[];
+  timestamp: Date;
+}
+
+const ChatPage = ({ isOnline }: { isOnline: boolean }) => {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [topK, setTopK] = useState(5);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading || !isOnline) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const response = await api.query(input, topK);
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: response.answer,
+        sources: response.sources,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (err) {
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error processing your request. Please make sure the LLM server is running.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+
+    setIsLoading(false);
+  };
+
+  return (
+    <div className="chat-page">
+      <div className="chat-container">
+        <div className="chat-header">
+          <div className="chat-title">
+            <MessageCircle size={24} />
+            <h1>Chat</h1>
+          </div>
+          <div className="chat-settings">
+            <span>Top K:</span>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={topK}
+              onChange={(e) => setTopK(Number(e.target.value))}
+            />
+            <span className="topk-val">{topK}</span>
+          </div>
+        </div>
+
+        <div className="chat-messages">
+          {messages.length === 0 && (
+            <div className="chat-empty">
+              <Bot size={48} opacity={0.3} />
+              <h2>Start a conversation</h2>
+              <p>Ask questions about your uploaded documents</p>
+            </div>
+          )}
+
+          {messages.map((msg) => (
+            <div key={msg.id} className={`chat-message ${msg.role}`}>
+              <div className="message-avatar">
+                {msg.role === 'user' ? '👤' : '🤖'}
+              </div>
+              <div className="message-content">
+                <div className="message-bubble">
+                  {msg.role === 'assistant' ? (
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  ) : (
+                    msg.content
+                  )}
+                </div>
+                {msg.sources && msg.sources.length > 0 && (
+                  <div className="message-sources">
+                    <span>Sources:</span>
+                    {msg.sources.map((s, i) => (
+                      <span key={i} className="source-tag-mini">{s.split('/').pop()}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="message-time">
+                  {msg.timestamp.toLocaleTimeString()}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {isLoading && (
+            <div className="chat-message assistant">
+              <div className="message-avatar">🤖</div>
+              <div className="message-content">
+                <div className="message-bubble typing">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="chat-input-area">
+          <input
+            type="text"
+            placeholder={isOnline ? "Ask a question about your documents..." : "Backend offline..."}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            disabled={!isOnline || isLoading}
+          />
+          <button onClick={sendMessage} disabled={!isOnline || isLoading || !input.trim()}>
+            {isLoading ? <Loader2 size={20} className="spin" /> : <Send size={20} />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
 // LOGIN
 // ============================================================================
 
@@ -1020,6 +1190,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               onQuery={handleQuery}
             />
           } />
+          <Route path="/chat" element={<ChatPage isOnline={isOnline} />} />
           <Route path="/documents" element={
             <DocumentsPage
               documents={documents}
