@@ -310,8 +310,22 @@ const ResultNode = ({ data }: { data: any }) => {
 
         {data.status === 'loading' && (
           <div className="result-loading">
-            <Loader2 size={24} className="spin" />
-            <span>Generating response...</span>
+            <div className="progress-ring-container">
+              <svg className="progress-ring" viewBox="0 0 60 60">
+                <circle className="progress-ring-bg" cx="30" cy="30" r="24" />
+                <circle
+                  className="progress-ring-fill generating"
+                  cx="30" cy="30" r="24"
+                  strokeDasharray={150.8}
+                  strokeDashoffset={150.8 - (data.progress / 100) * 150.8}
+                />
+              </svg>
+              <span className="progress-value">{data.progress}</span>
+            </div>
+            <div className="stage-info">
+              <span className="stage-label">{data.stage || 'Processing...'}</span>
+              <span className="stage-percent">{data.progress}%</span>
+            </div>
           </div>
         )}
 
@@ -363,7 +377,7 @@ const PipelinePage = ({
   isOnline, health,
   uploadStatus, uploadFilename, onUpload,
   refreshStatus, refreshProgress, onRefresh,
-  queryStatus, queryResult, onQuery
+  queryStatus, queryResult, queryProgress, queryStage, onQuery
 }: any) => {
   const initialNodes: Node[] = [
     { id: 'upload', type: 'upload', position: { x: 80, y: 150 }, data: {} },
@@ -387,7 +401,7 @@ const PipelinePage = ({
       ...(node.id === 'upload' && { status: uploadStatus, filename: uploadFilename, onUpload, isOnline }),
       ...(node.id === 'process' && { status: refreshStatus, progress: refreshProgress, chunks: health?.documents_indexed || 0, onRefresh, isOnline }),
       ...(node.id === 'query' && { status: queryStatus, onQuery, isOnline }),
-      ...(node.id === 'result' && { result: queryResult, status: queryResult ? 'ready' : 'idle' }),
+      ...(node.id === 'result' && { result: queryResult, status: queryStatus === 'querying' ? 'loading' : (queryResult ? 'ready' : 'idle'), progress: queryProgress, stage: queryStage }),
     }
   }));
 
@@ -874,6 +888,8 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
   const [refreshStatus, setRefreshStatus] = useState<'idle' | 'processing' | 'success'>('idle');
   const [refreshProgress, setRefreshProgress] = useState(0);
   const [queryStatus, setQueryStatus] = useState<'idle' | 'querying'>('idle');
+  const [queryProgress, setQueryProgress] = useState(0);
+  const [queryStage, setQueryStage] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -925,10 +941,37 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
   const handleQuery = useCallback(async (query: string, topK: number) => {
     setQueryStatus('querying');
     setQueryResult(null);
+    setQueryProgress(0);
+    setQueryStage('Embedding query...');
+
+    // Simulate progress stages
+    const stages = [
+      { progress: 15, stage: 'Embedding query...', delay: 300 },
+      { progress: 35, stage: 'Searching documents...', delay: 500 },
+      { progress: 55, stage: 'Reranking results...', delay: 800 },
+      { progress: 75, stage: 'Generating response...', delay: 0 },
+    ];
+
+    let stageIndex = 0;
+    const progressInterval = setInterval(() => {
+      if (stageIndex < stages.length) {
+        setQueryProgress(stages[stageIndex].progress);
+        setQueryStage(stages[stageIndex].stage);
+        stageIndex++;
+      } else {
+        // Slowly increment while waiting for response
+        setQueryProgress(p => Math.min(p + 2, 95));
+      }
+    }, 600);
+
     try {
       const res = await api.query(query, topK);
+      clearInterval(progressInterval);
+      setQueryProgress(100);
+      setQueryStage('Complete!');
       setQueryResult(res);
     } catch (err) {
+      clearInterval(progressInterval);
       alert(err instanceof Error ? err.message : 'Query failed');
     }
     setQueryStatus('idle');
@@ -972,6 +1015,8 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               onRefresh={handleRefresh}
               queryStatus={queryStatus}
               queryResult={queryResult}
+              queryProgress={queryProgress}
+              queryStage={queryStage}
               onQuery={handleQuery}
             />
           } />
