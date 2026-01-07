@@ -46,3 +46,11 @@ export interface NodeStatus {
     status: 'idle' | 'loading' | 'success' | 'error';
     message?: string;
 }
+
+export interface LoginResponse {
+    access_token: string;
+    token_type: string;
+    role: 'admin' | 'user';
+    username: string;
+    name: string;
+}
