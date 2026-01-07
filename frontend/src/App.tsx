@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useLocation, Navigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import ReactFlow, {
   type Node,
@@ -52,20 +52,26 @@ import {
 
 import { api } from './api/client';
 import type { User as UserType, DocumentsResponse, QueryResponse, HealthResponse } from './types';
+import { Plus } from 'lucide-react';
 
 // ============================================================================
 // LAYOUT COMPONENTS
 // ============================================================================
 
-const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () => void; userRole: 'admin' | 'user' }) => {
 
-  const navItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Pipeline', badge: null },
-    { path: '/chat', icon: MessageCircle, label: 'Chat', badge: null },
-    { path: '/documents', icon: FolderOpen, label: 'Documents', badge: null },
-    { path: '/models', icon: Cpu, label: 'LLM Settings', badge: null },
-    { path: '/settings', icon: Settings, label: 'Configuration', badge: null },
+  const allNavItems = [
+    { path: '/', icon: LayoutDashboard, label: 'Pipeline', adminOnly: true },
+    { path: '/chat', icon: MessageCircle, label: 'Chat', adminOnly: false },
+    { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: true },
+    { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
+    { path: '/settings', icon: Settings, label: 'Configuration', adminOnly: true },
   ];
+
+  // Filter nav items based on role
+  const navItems = userRole === 'admin'
+    ? allNavItems
+    : allNavItems.filter(item => !item.adminOnly);
 
   return (
     <>
@@ -97,7 +103,6 @@ const Sidebar = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
               >
                 <item.icon size={18} />
                 <span>{item.label}</span>
-                {item.badge && <span className="nav-badge">{item.badge}</span>}
                 <ChevronRight size={14} className="nav-chevron" />
               </NavLink>
             ))}
@@ -844,12 +849,14 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-const ChatPage = ({ isOnline }: { isOnline: boolean }) => {
+const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boolean; userRole: 'admin' | 'user'; onUpload?: (file: File) => Promise<void>; onRefresh?: () => Promise<void> }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [topK, setTopK] = useState(5);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -858,6 +865,32 @@ const ChatPage = ({ isOnline }: { isOnline: boolean }) => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUpload) return;
+
+    setUploading(true);
+    try {
+      await onUpload(file);
+      if (onRefresh) await onRefresh();
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `✅ Document "${file.name}" uploaded and indexed successfully!`,
+        timestamp: new Date(),
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `❌ Failed to upload: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      }]);
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading || !isOnline) return;
@@ -905,6 +938,11 @@ const ChatPage = ({ isOnline }: { isOnline: boolean }) => {
             <h1>Chat</h1>
           </div>
           <div className="chat-settings">
+            {userRole === 'admin' && onRefresh && (
+              <button className="btn-secondary small" onClick={onRefresh} title="Re-index documents">
+                <RefreshCw size={16} />
+              </button>
+            )}
             <span>Top K:</span>
             <input
               type="range"
@@ -971,6 +1009,25 @@ const ChatPage = ({ isOnline }: { isOnline: boolean }) => {
         </div>
 
         <div className="chat-input-area">
+          {userRole === 'admin' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt,.md,.doc"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+              <button
+                className="upload-btn"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || !isOnline}
+                title="Upload document"
+              >
+                {uploading ? <Loader2 size={20} className="spin" /> : <Plus size={20} />}
+              </button>
+            </>
+          )}
           <input
             type="text"
             placeholder={isOnline ? "Ask a question about your documents..." : "Backend offline..."}
@@ -996,16 +1053,25 @@ const LoginModal = ({ onLogin }: { onLogin: (user: UserType) => void }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === 'admin' && password === 'admin123') {
-      onLogin({ username: 'admin', name: 'Administrator', role: 'admin' });
-    } else if (username === 'user' && password === 'user123') {
-      onLogin({ username: 'user', name: 'Standard User', role: 'user' });
-    } else {
-      setError('Invalid credentials');
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await api.login(username, password);
+      onLogin({
+        username: response.username,
+        name: response.name,
+        role: response.role
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Login failed');
     }
+
+    setLoading(false);
   };
 
   return (
@@ -1029,8 +1095,9 @@ const LoginModal = ({ onLogin }: { onLogin: (user: UserType) => void }) => {
             onChange={(e) => setPassword(e.target.value)}
           />
           {error && <div className="error">{error}</div>}
-          <button type="submit">
-            <Lock size={16} /> Login
+          <button type="submit" disabled={loading}>
+            {loading ? <Loader2 size={16} className="spin" /> : <Lock size={16} />}
+            {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
 
@@ -1149,7 +1216,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
 
   return (
     <div className="app-layout">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} userRole={user.role} />
 
       <main className="main-content">
         <header className="top-bar">
@@ -1190,27 +1257,47 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               onQuery={handleQuery}
             />
           } />
-          <Route path="/chat" element={<ChatPage isOnline={isOnline} />} />
-          <Route path="/documents" element={
-            <DocumentsPage
-              documents={documents}
+          <Route path="/chat" element={
+            <ChatPage
               isOnline={isOnline}
-              onRefresh={handleRefresh}
-              onDocumentsChange={async () => {
-                const d = await api.getDocuments();
-                setDocuments(d);
-                try {
-                  const h = await api.health();
-                  setHealth(h);
-                  setIsOnline(h.status === 'healthy');
-                } catch {
-                  setIsOnline(false);
-                }
+              userRole={user.role}
+              onUpload={async (file) => {
+                await api.uploadDocument(file);
               }}
+              onRefresh={handleRefresh}
             />
           } />
-          <Route path="/models" element={<LLMPage />} />
-          <Route path="/settings" element={<ConfigPage />} />
+          {user.role === 'admin' ? (
+            <>
+              <Route path="/documents" element={
+                <DocumentsPage
+                  documents={documents}
+                  isOnline={isOnline}
+                  onRefresh={handleRefresh}
+                  onDocumentsChange={async () => {
+                    const d = await api.getDocuments();
+                    setDocuments(d);
+                    try {
+                      const h = await api.health();
+                      setHealth(h);
+                      setIsOnline(h.status === 'healthy');
+                    } catch {
+                      setIsOnline(false);
+                    }
+                  }}
+                />
+              } />
+              <Route path="/models" element={<LLMPage />} />
+              <Route path="/settings" element={<ConfigPage />} />
+            </>
+          ) : (
+            <>
+              <Route path="/documents" element={<Navigate to="/chat" replace />} />
+              <Route path="/models" element={<Navigate to="/chat" replace />} />
+              <Route path="/settings" element={<Navigate to="/chat" replace />} />
+              <Route path="/" element={<Navigate to="/chat" replace />} />
+            </>
+          )}
         </Routes>
       </main>
     </div>
