@@ -1,284 +1,332 @@
-# 04. LLM Integration
+# RagVault LLM Integration Guide
 
-> Llamafile server setup, model details, and prompt engineering
+> Complete documentation for integrating and configuring the Llamafile LLM server, including model selection, GPU acceleration, and prompt engineering.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Llamafile Architecture](#llamafile-architecture)
+3. [Model Selection](#model-selection)
+4. [Installation](#installation)
+5. [Configuration](#configuration)
+6. [GPU Acceleration](#gpu-acceleration)
+7. [Prompt Templates](#prompt-templates)
+8. [API Reference](#api-reference)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Overview
 
-RagVault uses a **local LLM** for 100% offline operation:
+### What is Llamafile?
 
-| Property | Value |
-|----------|-------|
-| **Model** | Mistral-Nemo-Instruct-2407 |
-| **Parameters** | 12 billion |
+**Llamafile** is Mozilla's solution for running LLMs locally. It bundles:
+- The LLM model weights
+- An inference engine (llama.cpp)
+- An HTTP server (OpenAI-compatible API)
+
+All in a single executable file that runs on any platform.
+
+### Why Llamafile?
+
+| Feature | Llamafile | Other Solutions |
+|---------|-----------|-----------------|
+| **Installation** | Single file download | Complex setup |
+| **Dependencies** | None (self-contained) | Python, CUDA, etc. |
+| **GPU Support** | Auto-detect Metal/CUDA | Manual configuration |
+| **API** | OpenAI-compatible | Varies |
+| **Offline** | 100% local | May require internet |
+
+---
+
+## Llamafile Architecture
+
+### System Integration
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        LLM INTEGRATION ARCHITECTURE                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  ┌───────────────────┐         ┌───────────────────┐
+  │  ResponseGenerator │        │    Streamlit UI   │
+  │   (Python)        │        │    (Chat Interface)│
+  └─────────┬─────────┘        └──────────┬────────┘
+            │                              │
+            └──────────────┬───────────────┘
+                           │
+                           ▼
+            ┌───────────────────────────────┐
+            │        LangChain Llamafile    │
+            │    (langchain_community.llms) │
+            └───────────────┬───────────────┘
+                           │
+                           ▼
+            ┌───────────────────────────────┐
+            │      HTTP REST API            │
+            │   http://localhost:8081/v1    │
+            └───────────────┬───────────────┘
+                           │
+                           ▼
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        LLAMAFILE SERVER                                  │
+  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐          │
+  │  │   HTTP Server   │  │  llama.cpp      │  │   Model Weights │          │
+  │  │   (Port 8081)   │  │  (Inference)    │  │   (GGUF format) │          │
+  │  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
+  │                                                                          │
+  │  GPU Acceleration: Metal (macOS) / CUDA (Linux/Windows) / CPU (fallback)│
+  └─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Communication Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           LLM REQUEST FLOW                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Python Code                LangChain                  Llamafile
+  ───────────                ─────────                  ─────────
+       │                          │                          │
+       │  llm.invoke(prompt)      │                          │
+       │─────────────────────────▶│                          │
+       │                          │                          │
+       │                          │  POST /v1/chat/completions
+       │                          │─────────────────────────▶│
+       │                          │                          │
+       │                          │                          │ ← GPU inference
+       │                          │                          │ ← Token generation
+       │                          │                          │
+       │                          │  { "choices": [...] }    │
+       │                          │◀─────────────────────────│
+       │                          │                          │
+       │  "The answer is..."      │                          │
+       │◀─────────────────────────│                          │
+       │                          │                          │
+```
+
+---
+
+## Model Selection
+
+### Default Model: Mistral Nemo 12B
+
+RagVault uses **Mistral-Nemo-Instruct-2407.Q5_K_M** by default:
+
+| Attribute | Value |
+|-----------|-------|
+| **Parameters** | 12.2 billion |
 | **Quantization** | Q5_K_M (5-bit) |
-| **File Size** | 8.5 GB |
-| **Format** | llamafile (self-contained executable) |
-| **Context Window** | 128,000 tokens |
+| **File Size** | ~8.5 GB |
+| **Context Length** | 128K tokens |
+| **Languages** | Multilingual |
+| **License** | Apache 2.0 |
 
----
+### Alternative Models
 
-## What is Llamafile?
+| Model | Size | Quality | Speed | Use Case |
+|-------|------|---------|-------|----------|
+| **Mistral-7B-Instruct** | 4 GB | Good | Fast | Development |
+| **Mistral-Nemo-12B** | 8.5 GB | Better | Medium | **Default** |
+| **Llama-3.1-8B-Instruct** | 5 GB | Good | Fast | General |
+| **Mixtral-8x7B-Instruct** | 25 GB | Best | Slow | High quality |
+| **Phi-3-mini** | 2.4 GB | Fair | Fastest | Low resources |
 
-Llamafile is a Mozilla project that packages an LLM into a **single executable file**:
-
-```
-Traditional Setup:
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Install Python                                              │
-│  2. Install PyTorch                                             │
-│  3. Install transformers                                        │
-│  4. Download model weights (multiple files)                     │
-│  5. Write inference code                                        │
-│  6. Run                                                         │
-└─────────────────────────────────────────────────────────────────┘
-
-Llamafile:
-┌─────────────────────────────────────────────────────────────────┐
-│  1. Download single .llamafile                                  │
-│  2. chmod +x                                                    │
-│  3. Run                                                         │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Key Features
-
-- **Self-contained**: No dependencies to install
-- **Cross-platform**: Works on macOS, Linux, Windows
-- **OpenAI-compatible API**: Drop-in replacement
-- **GPU acceleration**: Supports CUDA, Metal, ROCm
-
----
-
-## Model: Mistral-Nemo-Instruct-2407
-
-### Why This Model?
-
-| Criterion | Mistral-Nemo | Alternatives |
-|-----------|--------------|--------------|
-| **Size** | 12B params (8.5GB Q5) | Llama-70B (40GB+) |
-| **Context** | 128K tokens | Most: 4K-32K |
-| **Quality** | Excellent for RAG | Comparable to GPT-3.5 |
-| **Speed** | Fast on CPU | Larger models too slow |
-| **License** | Apache 2.0 | Some restricted |
-
-### Model Architecture
+### Quantization Levels
 
 ```
-Mistral-Nemo-12B Architecture
-┌─────────────────────────────────────────────────────────────────┐
-│                                                                  │
-│  Input: "Question: What is X?\nContext: [document text]"        │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  TOKENIZER (SentencePiece)                                │   │
-│  │  Vocabulary: 32,000 tokens                                │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  EMBEDDING LAYER                                          │   │
-│  │  Dimension: 5,120                                         │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  40 TRANSFORMER LAYERS                                    │   │
-│  │  ┌────────────────────────────────────────────────────┐  │   │
-│  │  │  Multi-Head Attention (32 heads)                   │  │   │
-│  │  │  + Sliding Window Attention (128K context)         │  │   │
-│  │  │  + Grouped Query Attention (8 KV heads)            │  │   │
-│  │  └────────────────────────────────────────────────────┘  │   │
-│  │  ┌────────────────────────────────────────────────────┐  │   │
-│  │  │  Feed-Forward Network                              │  │   │
-│  │  │  (SwiGLU activation, 14,336 intermediate)          │  │   │
-│  │  └────────────────────────────────────────────────────┘  │   │
-│  │  × 40 layers                                              │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              │                                   │
-│                              ▼                                   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  OUTPUT HEAD                                              │   │
-│  │  → Next token probabilities (32,000 vocab)               │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              │                                   │
-│                              ▼                                   │
-│  Output: "The answer is..."                                      │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+Model Quality vs Size Tradeoff:
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Quantization │ Size Reduction │ Quality Loss │ Recommended          │
+├──────────────┼────────────────┼──────────────┼──────────────────────│
+│ Q8_0         │ 2x smaller     │ Minimal      │ Best quality         │
+│ Q6_K         │ 2.5x smaller   │ Very small   │ High quality         │
+│ Q5_K_M       │ 3x smaller     │ Small        │ ★ Recommended        │
+│ Q4_K_M       │ 4x smaller     │ Moderate     │ Memory constrained   │
+│ Q3_K_M       │ 5x smaller     │ Noticeable   │ Very low memory      │
+│ Q2_K         │ 6x smaller     │ Significant  │ Not recommended      │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Server Setup
+## Installation
 
-### Download Model
+### Step 1: Download Model
 
 ```bash
 # Create models directory
 mkdir -p models
+cd models
 
-# Download from HuggingFace (8.5 GB)
-curl -L -o models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
+# Download Mistral Nemo 12B (recommended, 8.5 GB)
+curl -L -o Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
   "https://huggingface.co/Mozilla/Mistral-Nemo-Instruct-2407-llamafile/resolve/main/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile"
 
-# Make executable
-chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
+# Alternative: Smaller model for testing (4 GB)
+# curl -L -o mistral-7b-instruct-v0.2.Q5_K_M.llamafile \
+#   "https://huggingface.co/Mozilla/Mistral-7B-Instruct-v0.2-llamafile/resolve/main/mistral-7b-instruct-v0.2.Q5_K_M.llamafile"
 ```
 
-### Start Server
+### Step 2: Make Executable
 
 ```bash
-# Basic start (CPU only)
-./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
-  --server \
-  --port 8081 \
-  --nobrowser
+chmod +x models/*.llamafile
+```
 
-# With GPU acceleration (Apple Silicon)
+### Step 3: First Run (Downloads Dependencies)
+
+```bash
+# First run may download additional components
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --help
+```
+
+### Step 4: Start Server
+
+```bash
+# Start with GPU acceleration
 ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
   --server \
-  --port 8081 \
   --nobrowser \
-  -ngl 999  # Offload all layers to GPU
-
-# With GPU acceleration (NVIDIA)
-./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
-  --server \
-  --port 8081 \
-  --nobrowser \
-  -ngl 999
-```
-
-### Server Flags Explained
-
-| Flag | Purpose |
-|------|---------|
-| `--server` | Run in API server mode |
-| `--port 8081` | Listen on port 8081 |
-| `--nobrowser` | Don't auto-open web UI |
-| `-ngl 999` | Offload layers to GPU (999 = all) |
-| `-ngl 0` | Force CPU only (Docker) |
-| `--ctx-size 8192` | Override context window |
-| `--threads 8` | CPU threads to use |
-
----
-
-## API Reference
-
-The llamafile server provides an **OpenAI-compatible API**:
-
-### Health Check
-
-```bash
-curl http://localhost:8081/health
-
-# Response:
-{"status": "ok", "slots_idle": 1, "slots_processing": 0}
-```
-
-### Completion Endpoint
-
-```bash
-curl -X POST http://localhost:8081/completion \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "What is 2+2?",
-    "n_predict": 100,
-    "temperature": 0.7
-  }'
-
-# Response:
-{
-  "content": "2+2 equals 4.",
-  "generation_settings": {...},
-  "model": "Mistral-Nemo-Instruct-2407.Q5_K_M",
-  "prompt": "What is 2+2?",
-  "stop": true,
-  "stopped_eos": true,
-  ...
-}
-```
-
-### Chat Completion (OpenAI format)
-
-```bash
-curl -X POST http://localhost:8081/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "mistral",
-    "messages": [
-      {"role": "user", "content": "Hello!"}
-    ]
-  }'
+  -ngl 999 \
+  --port 8081
 ```
 
 ---
 
-## LangChain Integration
+## Configuration
 
-### ResponseGenerator Class
+### Server Command Options
+
+```bash
+./model.llamafile \
+  --server           # Run as HTTP server
+  --nobrowser        # Don't open browser UI
+  -ngl 999           # Offload all layers to GPU
+  --port 8081        # Server port
+  --host 0.0.0.0     # Listen on all interfaces
+  -c 8192            # Context window size
+  --threads 8        # CPU threads (fallback)
+  --seed 2024        # Reproducible outputs
+```
+
+### Full Options Reference
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--server` | Run as HTTP server | Required |
+| `--nobrowser` | Disable browser auto-open | Recommended |
+| `-ngl N` | GPU layers (999 = all) | 0 (CPU) |
+| `--port PORT` | HTTP server port | 8080 |
+| `--host HOST` | Bind address | 127.0.0.1 |
+| `-c N` | Context length | 4096 |
+| `--threads N` | CPU threads | Auto |
+| `--batch-size N` | Batch size | 512 |
+| `-t N` | Temperature | 0.7 |
+| `--seed N` | Random seed | Random |
+
+### RagVault Integration
+
+```yaml
+# config/process_config.yaml
+
+retrieval:
+  llamafile_server_base_url: "http://localhost:8081"
+  send_nb_chunks_to_llm: 2
+```
 
 ```python
+# src/response/response_generator.py
+
 from langchain_community.llms import Llamafile
 
 class ResponseGenerator:
-    def __init__(self, config: Dict):
-        # Get URL from env (Docker) or config (local)
-        llm_url = os.environ.get(
-            "LLAMAFILE_SERVER_URL",
-            config["retrieval"]["llamafile_server_base_url"]
-        )
-        
-        # Initialize LangChain Llamafile wrapper
+    def __init__(self, config):
         self.llm = Llamafile(
-            base_url=llm_url,  # "http://localhost:8081"
-            seed=2024          # For reproducibility
+            base_url=config["retrieval"]["llamafile_server_base_url"],
+            seed=2024
         )
-```
-
-### Calling the LLM
-
-```python
-from langchain_core.prompts import ChatPromptTemplate
-
-# Create prompt template
-prompt = ChatPromptTemplate.from_template("""
-You are a helpful assistant. Answer based on the context.
-
-Context: {context}
-Question: {question}
-
-Answer:
-""")
-
-# Format and invoke
-messages = prompt.format_messages(context=context, question=query)
-response = self.llm.invoke(messages)
-
-# response is a string containing the LLM's answer
 ```
 
 ---
 
-## Prompt Engineering
+## GPU Acceleration
 
-### Main RAG Prompt
+### Automatic Detection
 
-The carefully crafted prompt ensures accurate, grounded responses:
+Llamafile automatically detects and uses available GPUs:
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                      GPU ACCELERATION SUPPORT                               │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Platform        │ GPU              │ Framework    │ Performance            │
+├─────────────────┼──────────────────┼──────────────┼────────────────────────┤
+│ macOS M1/M2/M3  │ Apple Silicon    │ Metal        │ ★★★★★ Excellent        │
+│ Linux           │ NVIDIA RTX       │ CUDA         │ ★★★★★ Excellent        │
+│ Windows         │ NVIDIA RTX       │ CUDA         │ ★★★★☆ Good             │
+│ Any             │ CPU              │ AVX2/AVX512  │ ★★☆☆☆ Slow             │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Apple Silicon (Metal)
+
+```bash
+# Automatic Metal detection on M1/M2/M3 Macs
+./model.llamafile --server -ngl 999 --port 8081
+
+# Output:
+# ggml_metal_init: allocating
+# ggml_metal_init: found device: Apple M3
+# ggml_metal_init: recommending unified memory: 24 GB
+# llm_load_tensors: offloading 40 layers to GPU
+```
+
+### NVIDIA CUDA
+
+```bash
+# Ensure CUDA drivers are installed
+nvidia-smi
+
+# Run with GPU offloading
+./model.llamafile --server -ngl 999 --port 8081
+
+# For partial offload (limited VRAM):
+./model.llamafile --server -ngl 20 --port 8081
+```
+
+### CPU Fallback
+
+```bash
+# Force CPU-only mode
+./model.llamafile --server -ngl 0 --threads 8 --port 8081
+```
+
+### Performance Comparison
+
+| Hardware | Tokens/sec | 100-token Response |
+|----------|------------|-------------------|
+| Apple M3 Max (Metal) | ~40 | ~2.5 seconds |
+| RTX 4090 (CUDA) | ~80 | ~1.2 seconds |
+| RTX 3080 (CUDA) | ~45 | ~2.2 seconds |
+| Intel i9 (CPU) | ~8 | ~12 seconds |
+| Apple M3 (CPU-only) | ~10 | ~10 seconds |
+
+---
+
+## Prompt Templates
+
+### Default RAG Prompt
 
 ```python
-PROMPT_TEMPLATE = """
-You are an efficient Q&A assistant that responds to user queries 
-based on provided context.
+# src/response/response_generator.py
 
-Based on the following information, please provide a clear, accurate, 
-and comprehensive answer to the question.
-
-If the information is not sufficient to answer the question completely, 
-acknowledge this and provide what you can.
+prompt = ChatPromptTemplate.from_template("""
+You are an efficient Q&A assistant that responds based on provided context.
 
 Question: {query}
 
@@ -289,224 +337,247 @@ Please provide a response that:
 1. Directly addresses the question
 2. Is supported by the provided information
 3. Is clear and well-organized
-4. Is as short as possible with relevant information
-5. Don't mention the source of the information
-6. Do not repeat the question
-7. Clearly state the lack of information if applicable
-8. Respond only in the language of the query
+4. Is as concise as possible
+5. States if information is insufficient
+6. Responds in the language of the query
 
 Response:
-"""
+""")
 ```
-
-### Prompt Design Principles
-
-| Principle | Implementation |
-|-----------|----------------|
-| **Grounding** | "Based on the following information" |
-| **Honesty** | "If information is not sufficient, acknowledge this" |
-| **Conciseness** | "As short as possible" |
-| **No hallucination** | "Supported by the provided information" |
-| **Multilingual** | "Respond only in the language of the query" |
 
 ### Query Expansion Prompt
 
-For improving retrieval when queries are ambiguous:
-
 ```python
-QUERY_EXPANSION_PROMPT = """
-You are a query processor that MUST follow these rules strictly:
-1. NEVER expand or define acronyms/abbreviations 
-   (e.g., DAC, ULA, API must stay exactly as written)
-2. Only fix grammatical structure if the query is incomplete
-3. Return the exact original query if it's already a complete sentence
+prompt = ChatPromptTemplate.from_template("""
+You are a query processor. Rules:
+1. NEVER expand acronyms (DAC, API must stay as-is)
+2. Only fix grammatical issues
+3. Return exact original if already complete
 
 Examples:
-Input: "acronym of ULA"
-Output: "What is the acronym of ULA"
-
 Input: "difference REST SOAP"
 Output: "What is the difference between REST and SOAP?"
 
 Original query: {query}
 Expanded query:
+""")
+```
+
+### Customizing Prompts
+
+```python
+# Custom prompt for technical documentation
+TECHNICAL_PROMPT = """
+You are a technical documentation expert. Based on the following
+documentation excerpts, provide a precise technical answer.
+
+Documentation:
+{context}
+
+Question: {query}
+
+Provide a technical answer with:
+- Specific details from the documentation
+- Code examples if relevant
+- References to specific sections
+
+Answer:
 """
 ```
 
 ---
 
-## Context Preparation
+## API Reference
 
-### How Context is Built
-
-```python
-def _prepare_context(self, chunks: List[Document]) -> str:
-    """Format retrieved chunks for LLM context"""
-    context_parts = []
-    
-    for i, chunk in enumerate(chunks, 1):
-        # Get source file name
-        source = chunk.metadata.get('source', 'Unknown')
-        
-        # Format with enumeration
-        context_parts.append(
-            f"[{i}] Source: {source}\n{chunk.page_content}"
-        )
-    
-    return "\n\n".join(context_parts)
-```
-
-### Example Context
-
-```
-[1] Source: data/raw/matter_spec.pdf
-The Device Attestation Certificate (DAC) is a X.509 certificate that
-contains the device's attestation public key. The Subject Key Identifier
-field is derived from the public key using SHA-1 hash...
-
-[2] Source: data/raw/security_notes.txt
-Certificate validation involves checking the Subject Key Identifier
-against the Authority Key Identifier of the issuing certificate...
-```
-
----
-
-## Performance Tuning
-
-### Generation Parameters
-
-| Parameter | Default | Purpose |
-|-----------|---------|---------|
-| `temperature` | 0.7 | Randomness (0=deterministic, 1=creative) |
-| `n_predict` | 512 | Max tokens to generate |
-| `top_p` | 0.9 | Nucleus sampling threshold |
-| `top_k` | 40 | Top-k sampling |
-| `repeat_penalty` | 1.1 | Penalize repetition |
-
-### Speed Optimization
-
-```bash
-# Faster generation (lower quality)
---ctx-size 4096      # Smaller context
---batch-size 512     # Larger batches
---threads 8          # More CPU threads
-
-# Higher quality (slower)
---ctx-size 16384     # Larger context
---temp 0.3           # More deterministic
-```
-
-### Memory Usage
-
-| Configuration | RAM Usage |
-|---------------|-----------|
-| Q5_K_M (default) | ~10 GB |
-| Q4_K_M | ~8 GB |
-| Q8_0 | ~14 GB |
-| CPU only | RAM |
-| GPU offload | VRAM + some RAM |
-
----
-
-## Docker Configuration
-
-### Environment Variable Override
-
-```yaml
-# docker-compose.yml
-services:
-  app:
-    environment:
-      - LLAMAFILE_SERVER_URL=http://llm-server:8081
-```
-
-### How It Works
+### LangChain Integration
 
 ```python
-# In ResponseGenerator.__init__()
-llm_url = os.environ.get(
-    "LLAMAFILE_SERVER_URL",    # Check env first (Docker)
-    config["retrieval"]["..."] # Fallback to config (local)
+from langchain_community.llms import Llamafile
+
+# Initialize
+llm = Llamafile(
+    base_url="http://localhost:8081",
+    seed=2024  # For reproducibility
 )
 
-# Docker: Uses http://llm-server:8081 (internal network)
-# Local:  Uses http://localhost:8081 (from config)
+# Simple invocation
+response = llm.invoke("What is RAG?")
+
+# With prompt template
+from langchain_core.prompts import ChatPromptTemplate
+
+prompt = ChatPromptTemplate.from_template("Explain {topic} simply.")
+chain = prompt | llm
+response = chain.invoke({"topic": "vector databases"})
 ```
 
----
+### Direct HTTP API
 
-## Error Handling
+```bash
+# Health check
+curl http://localhost:8081/health
 
-### Connection Errors
+# List models
+curl http://localhost:8081/v1/models
 
-```python
-def check_llm_status() -> bool:
-    """Check if LLM server is responding"""
-    try:
-        response = requests.get(f"{llm_url}/health", timeout=5)
-        return response.status_code == 200
-    except requests.exceptions.ConnectionError:
-        return False
-    except requests.exceptions.Timeout:
-        return False
+# Chat completion
+curl http://localhost:8081/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mistral",
+    "messages": [
+      {"role": "user", "content": "Hello!"}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 256
+  }'
+
+# Embeddings (if supported by model)
+curl http://localhost:8081/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "mistral",
+    "input": "Hello world"
+  }'
 ```
 
-### Generation Errors
+### API Response Format
 
-```python
-try:
-    response = self.llm.invoke(messages)
-except Exception as e:
-    logger.error(f"LLM generation failed: {e}")
-    return {
-        "response": "I apologize, but I encountered an error. Please try again.",
-        "error": str(e)
+```json
+{
+  "id": "chatcmpl-xxx",
+  "object": "chat.completion",
+  "created": 1704628800,
+  "model": "mistral",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello! How can I help you today?"
+      },
+      "finish_reason": "stop"
     }
+  ],
+  "usage": {
+    "prompt_tokens": 5,
+    "completion_tokens": 10,
+    "total_tokens": 15
+  }
+}
 ```
 
 ---
 
 ## Troubleshooting
 
-### LLM Server Won't Start
+### Common Issues
+
+#### 1. Server Won't Start
 
 ```bash
-# Check if file is executable
-ls -la models/*.llamafile
-
-# Make executable
-chmod +x models/*.llamafile
-
 # Check if port is in use
 lsof -i :8081
+
+# Kill existing process
+pkill -f llamafile
+
+# Restart
+./model.llamafile --server --nobrowser -ngl 999 --port 8081
 ```
 
-### Slow Response Times
+#### 2. Out of Memory (GPU)
 
 ```bash
-# Enable GPU (Apple Silicon)
-./models/*.llamafile --server -ngl 999 --port 8081
+# Reduce GPU layers
+./model.llamafile --server -ngl 20 --port 8081
 
-# Reduce context size
-./models/*.llamafile --server --ctx-size 4096 --port 8081
+# Or use CPU
+./model.llamafile --server -ngl 0 --threads 8 --port 8081
 ```
 
-### Out of Memory
+#### 3. Slow Response
 
 ```bash
-# Use smaller model or quantization
-# Download Q4_K_M version instead of Q5_K_M
+# Enable GPU
+./model.llamafile --server -ngl 999 --port 8081
 
-# Or reduce batch size
-./models/*.llamafile --server --batch-size 256 --port 8081
+# Check GPU usage
+# macOS:
+powermetrics --samplers gpu
+
+# Linux:
+nvidia-smi
+```
+
+#### 4. Connection Refused
+
+```python
+# Check if server is running
+import requests
+
+try:
+    response = requests.get("http://localhost:8081/health", timeout=2)
+    print("Server is running:", response.json())
+except Exception as e:
+    print("Server not running:", e)
+```
+
+#### 5. Model Not Loading
+
+```bash
+# Verify file integrity
+ls -la models/*.llamafile
+
+# Check file is executable
+chmod +x models/*.llamafile
+
+# Verify model works
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --help
+```
+
+### Health Check Script
+
+```python
+#!/usr/bin/env python3
+"""Check LLM server health."""
+
+import requests
+import sys
+
+def check_llm_health(url: str = "http://localhost:8081") -> bool:
+    endpoints = [
+        f"{url}/health",
+        f"{url}/v1/models",
+    ]
+    
+    for endpoint in endpoints:
+        try:
+            response = requests.get(endpoint, timeout=5)
+            if response.status_code == 200:
+                print(f"✅ {endpoint} - OK")
+                return True
+        except Exception as e:
+            print(f"❌ {endpoint} - {e}")
+    
+    return False
+
+if __name__ == "__main__":
+    if not check_llm_health():
+        print("\n⚠️  LLM server is not running!")
+        print("Start it with:")
+        print("  ./models/Mistral-Nemo-*.llamafile --server -ngl 999 --port 8081")
+        sys.exit(1)
 ```
 
 ---
 
-## Next: RAG Pipeline →
+## Next Steps
 
-See [05_RAG_PIPELINE.md](./05_RAG_PIPELINE.md) for the complete retrieval-generation flow.
+- **[RAG Pipeline](./05_RAG_PIPELINE.md)** - How LLM integrates with retrieval
+- **[Configuration](./09_CONFIGURATION.md)** - Full config reference
+- **[Scalability](./SCALABILITY.md)** - Multi-instance LLM deployment
 
 ---
 
-*Author: Arnav Angarkar*
+*Last updated: January 2026*

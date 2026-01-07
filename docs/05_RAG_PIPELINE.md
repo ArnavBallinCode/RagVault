@@ -1,496 +1,963 @@
-# 05. RAG Pipeline
+# RagVault RAG Pipeline Documentation
 
-> Complete end-to-end flow from user query to generated answer
+> Complete technical reference for the Retrieval-Augmented Generation pipeline, including document processing, retrieval strategies, reranking, and response generation.
+
+---
+
+## Table of Contents
+
+1. [Pipeline Overview](#pipeline-overview)
+2. [Document Ingestion](#document-ingestion)
+3. [Document Preprocessing](#document-preprocessing)
+4. [Retrieval System](#retrieval-system)
+5. [Neural Reranking](#neural-reranking)
+6. [Response Generation](#response-generation)
+7. [Caching System](#caching-system)
+8. [Configuration](#configuration)
+9. [Performance Optimization](#performance-optimization)
 
 ---
 
 ## Pipeline Overview
 
-The RAG (Retrieval-Augmented Generation) pipeline consists of 7 stages:
+### What is RAG?
+
+**Retrieval-Augmented Generation (RAG)** combines document retrieval with language model generation:
+
+1. **Retrieve** relevant documents from a knowledge base
+2. **Augment** the LLM prompt with retrieved context
+3. **Generate** an informed response
+
+### RagVault Pipeline Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           RAG PIPELINE                                       │
-│                                                                              │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐   │
-│  │ 1.INPUT │───▶│2.RETRIEV│───▶│3.RERANK │───▶│4.CONTEXT│───▶│5.GENERAT│   │
-│  │         │    │         │    │         │    │         │    │         │   │
-│  │ Query   │    │ BM25 +  │    │ Neural  │    │ Top-K   │    │ LLM     │   │
-│  │         │    │ Vector  │    │ Scoring │    │ Select  │    │ Answer  │   │
-│  └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘   │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                          RAG PIPELINE FLOW                                  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        INDEXING PHASE (Offline)                          │
+  └─────────────────────────────────────────────────────────────────────────┘
+  
+  Documents           FileLoader           DataPreprocessor        Embeddings
+  ┌─────────┐        ┌───────────┐        ┌───────────────┐       ┌─────────┐
+  │ PDF     │───────▶│  Docling  │───────▶│   Chunking    │──────▶│  Nomic  │
+  │ DOCX    │        │  Convert  │        │   2000/200    │       │  v1.5   │
+  │ TXT     │        └───────────┘        └───────────────┘       └────┬────┘
+  │ MD      │                                                          │
+  └─────────┘                                                          ▼
+                                              ┌────────────────────────────┐
+                                              │   Dual Index Storage       │
+                                              │ ┌──────────┐ ┌──────────┐  │
+                                              │ │  FAISS   │ │   BM25   │  │
+                                              │ │ Vectors  │ │  Tokens  │  │
+                                              │ └──────────┘ └──────────┘  │
+                                              └────────────────────────────┘
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        QUERY PHASE (Online)                              │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  User Query          Hybrid Search         Reranker           Response Gen
+  ┌─────────┐        ┌───────────────┐     ┌──────────┐       ┌───────────┐
+  │ "What   │───────▶│ FAISS + BM25  │────▶│   BGE    │──────▶│ Llamafile │
+  │  is..." │        │  Combined     │     │ Cross-Enc│       │  Mistral  │
+  └─────────┘        └───────────────┘     └──────────┘       └─────┬─────┘
+                                                                    │
+                                                                    ▼
+                                                              ┌───────────┐
+                                                              │  Answer   │
+                                                              │ + Sources │
+                                                              └───────────┘
 ```
+
+### Pipeline Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| **DataIngestion** | `src/data/data_ingestion.py` | Load documents |
+| **DataPreprocessor** | `src/data/data_preprocessing.py` | Chunk documents |
+| **FileLoader** | `src/data/loaders/file_loader.py` | Multi-format parsing |
+| **EnhancedWebLoader** | `src/data/loaders/web_scraper.py` | URL scraping |
+| **VectorRetriever** | `src/retrieval/vector_retriever.py` | FAISS search |
+| **BM25Retriever** | `src/retrieval/bm25_retriever.py` | Keyword search |
+| **HybridRetriever** | `src/retrieval/hybrid_retriever.py` | Combined search |
+| **Reranker** | `src/models/reranker.py` | Neural reranking |
+| **ResponseGenerator** | `src/response/response_generator.py` | LLM integration |
+| **CacheManager** | `src/cache/cache.py` | Embedding cache |
 
 ---
 
-## Stage 1: Query Input
+## Document Ingestion
 
-**What happens:** User types a natural language question.
-
-```
-USER INPUT
-    │
-    │  "What is the subject key identifier in Matter DAC?"
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Query Processing                                                │
-│                                                                  │
-│  1. Receive query string                                        │
-│  2. Validate not empty                                          │
-│  3. (Optional) Query expansion via LLM                          │
-│                                                                  │
-│  Input:  "What is the subject key identifier in Matter DAC?"    │
-│  Output: "What is the subject key identifier in Matter DAC?"    │
-│          (unchanged, or expanded if enabled)                    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Code Path
+### DataIngestion Class
 
 ```python
-# streamlit_app.py
-query = st.chat_input("Ask a question about your documents...")
+# src/data/data_ingestion.py
 
-if query:
-    # Optional: Query expansion
-    if config.get("use_query_expansion"):
-        query = response_generator.expand_query(query)
+class DataIngestion:
+    """
+    Comprehensive data ingestion system supporting multiple source types.
+    
+    Features:
+        - Multi-source document loading (files, web, special sources)
+        - Automatic caching of processed documents
+        - Data validation and integrity checks
+        - Progress tracking for long operations
+    """
+    
+    def __init__(self, config: dict):
+        self.config = config
+        self.cache_manager = CacheManager(config['paths']['cache_dir'])
+        self.file_loader = FileLoader(config)
 ```
 
----
-
-## Stage 2: Hybrid Retrieval
-
-**What happens:** Find candidate documents using BM25 + Vector search.
-
-### Step 2a: BM25 Search
-
-```
-Query: "What is the subject key identifier in Matter DAC?"
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  BM25 RETRIEVAL                                                  │
-│                                                                  │
-│  1. TOKENIZE query                                               │
-│     ["what", "is", "the", "subject", "key", "identifier",       │
-│      "in", "matter", "dac"]                                      │
-│                                                                  │
-│  2. LOOKUP each token in inverted index                         │
-│     "subject" → [chunk_23, chunk_45, chunk_102]                 │
-│     "key"     → [chunk_23, chunk_45, chunk_67, chunk_102]       │
-│     "dac"     → [chunk_23, chunk_45]                            │
-│                                                                  │
-│  3. SCORE each document using BM25 formula                      │
-│     chunk_23: 0.89                                               │
-│     chunk_45: 0.76                                               │
-│     chunk_102: 0.54                                              │
-│     ...                                                          │
-│                                                                  │
-│  4. RETURN top-100 by score                                     │
-│     [(chunk_23, 0.89), (chunk_45, 0.76), ...]                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Step 2b: Vector Search
-
-```
-Query: "What is the subject key identifier in Matter DAC?"
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  VECTOR RETRIEVAL                                                │
-│                                                                  │
-│  1. EMBED query using nomic-embed-text-v1.5                     │
-│     [0.023, -0.156, 0.892, ..., 0.445]  (768 dimensions)        │
-│                                                                  │
-│  2. SEARCH FAISS index for similar vectors                      │
-│     ┌─────────────────────────────────────────────────────┐     │
-│     │  Query Vector                                        │     │
-│     │       ↓                                              │     │
-│     │  Calculate cosine similarity with all 248 chunks     │     │
-│     │       ↓                                              │     │
-│     │  Return top-100 most similar                         │     │
-│     └─────────────────────────────────────────────────────┘     │
-│                                                                  │
-│  3. RETURN top-100 by similarity                                │
-│     [(chunk_23, 0.92), (chunk_12, 0.88), ...]                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Step 2c: Score Fusion
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  HYBRID SCORE FUSION                                             │
-│                                                                  │
-│  BM25 Results:            Vector Results:                        │
-│  chunk_23: 0.89           chunk_23: 0.92                        │
-│  chunk_45: 0.76           chunk_12: 0.88                        │
-│  chunk_102: 0.54          chunk_45: 0.85                        │
-│  chunk_78: 0.51           chunk_7: 0.82                         │
-│                                                                  │
-│  Fusion Formula:                                                 │
-│  final_score = (bm25_score × 0.2) + (vector_score × 0.8)        │
-│                                                                  │
-│  Combined Results:                                               │
-│  chunk_23: (0.89 × 0.2) + (0.92 × 0.8) = 0.914  [HYBRID]       │
-│  chunk_12: (0.00 × 0.2) + (0.88 × 0.8) = 0.704  [VECTOR]       │
-│  chunk_45: (0.76 × 0.2) + (0.85 × 0.8) = 0.832  [HYBRID]       │
-│  chunk_7:  (0.00 × 0.2) + (0.82 × 0.8) = 0.656  [VECTOR]       │
-│  chunk_102:(0.54 × 0.2) + (0.00 × 0.8) = 0.108  [BM25]         │
-│                                                                  │
-│  Sorted Output: [chunk_23, chunk_45, chunk_12, ...]             │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Stage 3: Neural Reranking
-
-**What happens:** Score each candidate with cross-encoder for relevance.
-
-```
-Input: 100 candidate documents from hybrid retrieval
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  NEURAL RERANKING (bge-reranker-v2-m3)                          │
-│                                                                  │
-│  For each document:                                              │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │                                                           │   │
-│  │  Input Format:                                            │   │
-│  │  "[CLS] What is subject key identifier? [SEP] The DAC    │   │
-│  │   certificate contains the subject key identifier which  │   │
-│  │   is derived from the public key... [SEP]"               │   │
-│  │                                                           │   │
-│  │  ┌─────────────────────────────────────────────────────┐ │   │
-│  │  │          TRANSFORMER ENCODER                        │ │   │
-│  │  │          (12 layers, 768 hidden)                    │ │   │
-│  │  └─────────────────────────────────────────────────────┘ │   │
-│  │                          │                                │   │
-│  │                          ▼                                │   │
-│  │  Output: Relevance Score = 0.9523                        │   │
-│  │                                                           │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  Processing:                                                     │
-│  - Batch size: 8                                                 │
-│  - Max length: 512 tokens (truncated if longer)                 │
-│  - Device: MPS (Mac) / CUDA (NVIDIA) / CPU                      │
-│                                                                  │
-│  Results:                                                        │
-│  chunk_23:  0.9523  ← Rank 1                                    │
-│  chunk_45:  0.8912  ← Rank 2                                    │
-│  chunk_12:  0.7234                                               │
-│  chunk_7:   0.6891                                               │
-│  ...                                                             │
-│  chunk_102: 0.1234  ← Rank 100                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Why Reranking?
-
-| Retrieval | Reranking |
-|-----------|-----------|
-| **Fast but approximate** | **Slow but accurate** |
-| Encodes query/doc separately | Encodes query+doc together |
-| No cross-attention | Full cross-attention |
-| Good for candidate generation | Good for final selection |
-
----
-
-## Stage 4: Context Selection
-
-**What happens:** Select top-K documents for LLM context.
-
-```
-Input: Reranked documents with scores
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  CONTEXT SELECTION                                               │
-│                                                                  │
-│  Config: send_nb_chunks_to_llm = 2                              │
-│                                                                  │
-│  Select top-2 reranked documents:                               │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  CHUNK 1 (score: 0.9523)                                  │   │
-│  │  Source: data/raw/matter_spec.pdf                         │   │
-│  │  Content:                                                 │   │
-│  │  "The Device Attestation Certificate (DAC) contains       │   │
-│  │   the Subject Key Identifier (SKI) field which is        │   │
-│  │   derived from the device's public key using SHA-1..."   │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  CHUNK 2 (score: 0.8912)                                  │   │
-│  │  Source: data/raw/security_notes.txt                      │   │
-│  │  Content:                                                 │   │
-│  │  "The certificate chain validation process checks        │   │
-│  │   the Subject Key Identifier against the Authority Key   │   │
-│  │   Identifier of the issuing certificate..."              │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Context Formatting
+### Document Loading Flow
 
 ```python
-def _prepare_context(chunks: List[Document]) -> str:
-    parts = []
-    for i, chunk in enumerate(chunks, 1):
-        source = chunk.metadata.get('source', 'Unknown')
-        parts.append(f"[{i}] Source: {source}\n{chunk.page_content}")
-    return "\n\n".join(parts)
+def load_documents(self) -> List[Document]:
+    """Load documents from all configured sources."""
+    
+    documents = []
+    
+    # 1. Load from configured paths
+    for doc_path in self.config['files']['document_paths']:
+        if Path(doc_path).exists():
+            docs = self.file_loader.load(doc_path)
+            documents.extend(docs)
+    
+    # 2. Auto-scan uploads directory
+    uploads_dir = Path("data/uploads")
+    if uploads_dir.exists():
+        for file_path in uploads_dir.glob("*"):
+            if file_path.is_file() and not file_path.name.startswith('.'):
+                docs = self.file_loader.load(str(file_path))
+                documents.extend(docs)
+    
+    return documents
 ```
 
-Output:
-```
-[1] Source: data/raw/matter_spec.pdf
-The Device Attestation Certificate (DAC) contains the Subject Key
-Identifier (SKI) field which is derived from the device's public key...
-
-[2] Source: data/raw/security_notes.txt
-The certificate chain validation process checks the Subject Key
-Identifier against the Authority Key Identifier...
-```
-
----
-
-## Stage 5: Prompt Assembly
-
-**What happens:** Combine query + context into LLM prompt.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  PROMPT ASSEMBLY                                                 │
-│                                                                  │
-│  Template:                                                       │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  You are an efficient Q&A assistant that responds to      │   │
-│  │  user queries based on provided context.                  │   │
-│  │                                                           │   │
-│  │  Question: {query}                                        │   │
-│  │                                                           │   │
-│  │  Relevant Information:                                    │   │
-│  │  {context}                                                │   │
-│  │                                                           │   │
-│  │  Please provide a response that:                          │   │
-│  │  1. Directly addresses the question                       │   │
-│  │  2. Is supported by the provided information              │   │
-│  │  3. Is clear and well-organized                          │   │
-│  │  ...                                                      │   │
-│  │                                                           │   │
-│  │  Response:                                                │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  Filled Template:                                                │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  You are an efficient Q&A assistant...                    │   │
-│  │                                                           │   │
-│  │  Question: What is the subject key identifier in         │   │
-│  │            Matter DAC?                                    │   │
-│  │                                                           │   │
-│  │  Relevant Information:                                    │   │
-│  │  [1] Source: data/raw/matter_spec.pdf                     │   │
-│  │  The Device Attestation Certificate (DAC) contains...    │   │
-│  │                                                           │   │
-│  │  [2] Source: data/raw/security_notes.txt                  │   │
-│  │  The certificate chain validation process checks...       │   │
-│  │                                                           │   │
-│  │  Please provide a response that:                          │   │
-│  │  1. Directly addresses the question                       │   │
-│  │  ...                                                      │   │
-│  │                                                           │   │
-│  │  Response:                                                │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Stage 6: LLM Generation
-
-**What happens:** LLM generates answer based on prompt.
-
-```
-Assembled Prompt
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  LLM GENERATION (Mistral-Nemo-12B)                              │
-│                                                                  │
-│  1. TOKENIZE prompt                                              │
-│     ~1500 tokens (query + context + template)                   │
-│                                                                  │
-│  2. GENERATE tokens autoregressively                            │
-│     ┌────────────────────────────────────────────────────────┐  │
-│     │  Token 1: "The"                                         │  │
-│     │  Token 2: "Subject"                                     │  │
-│     │  Token 3: "Key"                                         │  │
-│     │  Token 4: "Identifier"                                  │  │
-│     │  ...                                                    │  │
-│     │  Token N: [EOS]                                         │  │
-│     └────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  3. DECODE tokens to text                                        │
-│                                                                  │
-│  Output:                                                         │
-│  "The Subject Key Identifier (SKI) in a Matter Device           │
-│   Attestation Certificate (DAC) is a cryptographic identifier   │
-│   derived from the device's public key using SHA-1 hashing.     │
-│   It enables certificate chain validation by matching the SKI   │
-│   with the Authority Key Identifier in issuing certificates."   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Generation Parameters
+### FileLoader - Format Support
 
 ```python
-# Implicit in llamafile
-temperature = 0.7      # Creativity level
-n_predict = 512        # Max tokens to generate
-top_p = 0.9           # Nucleus sampling
-repeat_penalty = 1.1   # Avoid repetition
+# src/data/loaders/file_loader.py
+
+class FileLoader:
+    """
+    Enhanced file loader supporting multiple formats.
+    
+    Supported formats:
+        - PDF (.pdf) - Using Docling for enhanced conversion
+        - Microsoft Office (.docx, .doc, .pptx, .ppt, .xlsx, .xls)
+        - Text files (.txt, .md)
+        - Data files (.csv, .json)
+        - Web content (.html, .htm)
+        - Email (.eml, .msg)
+        - Jupyter notebooks (.ipynb)
+        - Source code (30+ programming languages)
+    """
+    
+    def __init__(self, config):
+        self.docling_converter = DocumentConverter()
+        self.file_converter = OfficeConverter()
+        self._initialize_loaders()
+    
+    def _initialize_loaders(self):
+        self.document_loaders = {
+            # Documents
+            '.pdf': self._load_pdf_or_markdown,
+            '.md': self._load_pdf_or_markdown,
+            '.txt': TextLoader,
+            '.docx': self._convert_and_load,
+            '.doc': self._convert_and_load,
+            
+            # Data
+            '.csv': self._load_csv,
+            '.json': JSONLoader,
+            '.xlsx': self._load_excel,
+            
+            # Code (selected examples)
+            '.py': self._load_code_file,
+            '.js': self._load_code_file,
+            '.ts': self._load_code_file,
+            # ... 30+ more languages
+        }
+    
+    def load(self, source: str) -> List[Document]:
+        """Load and parse a document from the given file."""
+        source_path = Path(source)
+        loader_class = self.document_loaders.get(source_path.suffix.lower())
+        
+        if not loader_class:
+            raise ValueError(f"Unsupported file type: {source_path.suffix}")
+        
+        if callable(loader_class) and not isinstance(loader_class, type):
+            return loader_class(str(source_path))
+        else:
+            return loader_class(str(source_path)).load()
+```
+
+### PDF Processing with Docling
+
+```python
+def _load_pdf_or_markdown(self, file_path: str) -> List[Document]:
+    """Load PDF/Markdown using Docling for high-quality extraction."""
+    
+    # Docling provides excellent table and structure extraction
+    result = self.docling_converter.convert(file_path)
+    
+    # Export to markdown format
+    markdown_result = result.document.export_to_markdown()
+    markdown_result = markdown_result.replace("<!-- image -->\n\n", "")
+    
+    return [Document(
+        page_content=markdown_result,
+        metadata={
+            "source": file_path,
+            "is_markdown": True
+        }
+    )]
+```
+
+### Web Scraping
+
+```python
+# src/data/loaders/web_scraper.py
+
+class EnhancedWebLoader:
+    """
+    Advanced web content loader with TOC traversal.
+    
+    Features:
+        - Asynchronous content loading
+        - Intelligent TOC detection and traversal
+        - Domain-restricted crawling
+        - Markdown conversion
+    """
+    
+    def __init__(self, config, base_url: str, traverse_toc: bool = True):
+        self.base_url = base_url
+        self.domain = urlparse(base_url).netloc
+        self.traverse_toc = traverse_toc
+        self.converter = DocumentConverter()
+    
+    async def scrape_all(self) -> List[Document]:
+        """Scrape all relevant pages and convert to markdown."""
+        
+        async with aiohttp.ClientSession() as session:
+            urls_to_scrape = {self.base_url}
+            
+            # Get TOC links if enabled
+            if self.traverse_toc:
+                toc_links = await self.get_toc_links(session, self.base_url)
+                urls_to_scrape.update(toc_links)
+            
+            # Process each URL
+            documents = []
+            for url in tqdm(urls_to_scrape, desc="Processing Web pages"):
+                result = self.converter.convert(url)
+                markdown = result.document.export_to_markdown()
+                
+                documents.append(Document(
+                    page_content=markdown,
+                    metadata={"source": url, "is_url": True}
+                ))
+            
+            return documents
 ```
 
 ---
 
-## Stage 7: Response Formatting
+## Document Preprocessing
 
-**What happens:** Package response with metadata for display.
+### DataPreprocessor Class
 
+```python
+# src/data/data_preprocessing.py
+
+class DataPreprocessor:
+    """
+    Advanced document preprocessing with specialized handling.
+    
+    Features:
+        - Markdown header-based splitting
+        - Code-aware chunking
+        - Jupyter notebook processing
+        - Parallel processing
+        - Intelligent caching
+    """
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.chunk_size = config['processing']['chunk_size']      # 2000
+        self.chunk_overlap = config['processing']['chunk_overlap'] # 200
+        self.num_processes = cpu_count() - 1 or 1
+        self.cache_manager = CacheManager(config['paths']['cache_dir'])
 ```
-LLM Output + Metadata
-       │
-       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  RESPONSE FORMATTING                                             │
-│                                                                  │
-│  {                                                               │
-│    "response": "The Subject Key Identifier (SKI) in a Matter   │
-│                 Device Attestation Certificate (DAC) is a       │
-│                 cryptographic identifier derived from the       │
-│                 device's public key using SHA-1 hashing...",    │
-│                                                                  │
-│    "source_documents": [                                         │
-│      {"source": "data/raw/matter_spec.pdf", "score": 0.9523},   │
-│      {"source": "data/raw/security_notes.txt", "score": 0.8912} │
-│    ],                                                            │
-│                                                                  │
-│    "metadata": {                                                 │
-│      "retrieval_method": "hybrid",                              │
-│      "chunks_retrieved": 100,                                    │
-│      "chunks_reranked": 2,                                       │
-│      "generation_time": 2.34                                     │
-│    }                                                             │
-│  }                                                               │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+
+### Chunking Strategies
+
+```python
+def process_single_document(self, doc_tuple) -> List[Document]:
+    """Process a single document with type-appropriate strategy."""
+    
+    doc_path, doc = doc_tuple
+    
+    # Strategy 1: Markdown with headers
+    if doc.metadata.get("is_markdown", False):
+        return self._split_markdown(doc)
+    
+    # Strategy 2: Code files
+    if doc.metadata.get("is_code", False):
+        return self._split_code(doc)
+    
+    # Strategy 3: Jupyter notebooks
+    if doc.metadata.get("is_notebook", False):
+        return self._split_notebook(doc)
+    
+    # Strategy 4: CSV/tabular data
+    if doc.metadata.get("is_csv", False):
+        return self._split_csv(doc)
+    
+    # Default: Recursive character splitter
+    return self._split_text(doc)
+```
+
+### Markdown-Aware Splitting
+
+```python
+def _split_markdown(self, doc: Document) -> List[Document]:
+    """Split markdown preserving header hierarchy."""
+    
+    # Configure header splits
+    headers_to_split_on = [
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+        ("####", "Header 4"),
+    ]
+    
+    md_splitter = ModifiedMarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+        config=self.config
+    )
+    
+    # Split by headers first
+    header_chunks = md_splitter.split_text(doc.page_content)
+    
+    # Then apply size-based splitting
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=self.chunk_size,
+        chunk_overlap=self.chunk_overlap
+    )
+    
+    return text_splitter.split_documents(header_chunks)
+```
+
+### Code-Aware Splitting
+
+```python
+def _split_code(self, doc: Document) -> List[Document]:
+    """Split code files respecting function/class boundaries."""
+    
+    # Use LangChain's code splitter
+    language = self._detect_language(doc.metadata.get('file_extension'))
+    
+    code_splitter = CodeSplitter(
+        language=language,
+        chunk_lines=100,
+        chunk_lines_overlap=20
+    )
+    
+    return code_splitter.split_documents([doc])
+```
+
+### Parallel Processing
+
+```python
+def process_documents(self, docs: List[Document]) -> List[Document]:
+    """Process all documents in parallel."""
+    
+    # Check cache first
+    cache_key = self._generate_cache_key(docs)
+    cached = self.cache_manager.get_cached(cache_key, "chunks")
+    if cached:
+        return cached
+    
+    # Prepare for parallel processing
+    doc_tuples = [(d.metadata.get('source', ''), d) for d in docs]
+    
+    # Process in parallel
+    with Pool(processes=self.num_processes) as pool:
+        results = pool.map(self.process_single_document, doc_tuples)
+    
+    # Flatten results
+    all_chunks = [chunk for result in results for chunk in result]
+    
+    # Cache and return
+    self.cache_manager.cache_content(cache_key, all_chunks, "chunks")
+    
+    return all_chunks
 ```
 
 ---
 
-## Complete Pipeline Timing
+## Retrieval System
 
-Typical timing breakdown for a single query:
+### HybridRetriever
 
-| Stage | Time | Details |
-|-------|------|---------|
-| 1. Query Input | <1ms | String validation |
-| 2a. BM25 Search | ~50ms | Token matching |
-| 2b. Vector Search | ~100ms | Embedding + FAISS |
-| 2c. Score Fusion | ~10ms | Merge + sort |
-| 3. Reranking | ~2-5s | 100 docs × transformer |
-| 4. Context Selection | <1ms | Slice top-K |
-| 5. Prompt Assembly | <1ms | String formatting |
-| 6. LLM Generation | ~3-8s | Token generation |
-| 7. Response Formatting | <1ms | JSON packaging |
-| **Total** | **~5-15s** | Depends on hardware |
+Combines BM25 (keyword) and FAISS (semantic) search:
 
-### Performance Bottlenecks
+```python
+# src/retrieval/hybrid_retriever.py
 
+class HybridRetriever:
+    """
+    Hybrid document retrieval combining BM25 and vector approaches.
+    
+    The system combines:
+    - BM25 Okapi for keyword-focused search
+    - FAISS vector similarity for semantic search
+    
+    Results are combined using configurable weights and deduplicated.
+    """
+    
+    def __init__(self, config: dict):
+        self.bm25_weight = config['retrieval']['bm25_weight']  # 0.2
+        self.bm25_retriever = BM25Retriever(config)
+        self.vector_retriever = VectorRetriever(config)
+    
+    def initialize(self, chunks: List[Document]) -> None:
+        """Initialize both indices."""
+        self.bm25_retriever.create_index(chunks)
+        self.vector_retriever.create_vectorstore(chunks)
+    
+    def retrieve(self, query: str, top_k: int = 5,
+                 use_bm25: bool = True, 
+                 use_vector: bool = True) -> List[RetrievalResult]:
+        """Retrieve documents using combined approaches."""
+        
+        combined_results = {}
+        
+        # BM25 retrieval
+        if use_bm25:
+            bm25_docs, bm25_scores = self.bm25_retriever.retrieve(query, top_k * 10)
+            for doc, score in zip(bm25_docs, bm25_scores):
+                key = doc.page_content
+                if key not in combined_results:
+                    combined_results[key] = RetrievalResult(
+                        document=doc,
+                        score=score * self.bm25_weight,
+                        source='bm25'
+                    )
+                else:
+                    combined_results[key].score += score * self.bm25_weight
+        
+        # Vector retrieval
+        if use_vector:
+            vector_docs, vector_scores = self.vector_retriever.retrieve(query, top_k * 10)
+            vector_weight = 1 - self.bm25_weight
+            for doc, score in zip(vector_docs, vector_scores):
+                key = doc.page_content
+                if key not in combined_results:
+                    combined_results[key] = RetrievalResult(
+                        document=doc,
+                        score=score * vector_weight,
+                        source='vector'
+                    )
+                else:
+                    combined_results[key].score += score * vector_weight
+                    combined_results[key].source = 'hybrid'
+        
+        # Sort and return
+        sorted_results = sorted(
+            combined_results.values(),
+            key=lambda x: x.score,
+            reverse=True
+        )
+        return sorted_results[:top_k]
 ```
-Reranking (50% of time)
-    └── Mitigation: Reduce candidates (top_k: 50 instead of 100)
-    └── Mitigation: Use faster model
-    └── Mitigation: GPU acceleration
 
-LLM Generation (40% of time)
-    └── Mitigation: GPU acceleration (-ngl 999)
-    └── Mitigation: Shorter responses
-    └── Mitigation: Smaller/faster model
+### VectorRetriever (FAISS)
 
-Vector Search (5% of time)
-    └── Mitigation: FAISS IVF index for large datasets
-    └── Mitigation: Reduce embedding dimension
+```python
+# src/retrieval/vector_retriever.py
+
+class VectorRetriever:
+    """
+    FAISS-based vector retrieval with HuggingFace embeddings.
+    
+    Features:
+        - GPU-accelerated embeddings (MPS/CUDA)
+        - Efficient caching system
+        - Score normalization
+    """
+    
+    def __init__(self, config: dict):
+        self.embedding_model_name = config['model']['embedding_model_hf']
+        self.batch_size = config['processing']['batch_size_embeddings']
+        self.cache_manager = CacheManager(config['paths']['cache_dir'])
+        
+        # Auto-detect GPU
+        if torch.backends.mps.is_available():
+            device = "mps"  # Apple Silicon
+        elif torch.cuda.is_available():
+            device = "cuda"  # NVIDIA
+        else:
+            device = "cpu"
+        
+        # Initialize embeddings model
+        self.model_embeddings = HuggingFaceEmbeddings(
+            model_name=self.embedding_model_name,
+            model_kwargs={'device': device, 'trust_remote_code': True},
+            encode_kwargs={'normalize_embeddings': True, 'batch_size': self.batch_size}
+        )
+    
+    def create_vectorstore(self, chunks: List[Document]) -> None:
+        """Create FAISS index from document chunks."""
+        
+        # Check cache
+        cache_key = "".join([c.page_content for c in chunks[:100]])
+        cached = self.cache_manager.get_cached(cache_key, "embeddings_direct")
+        
+        if cached:
+            self.texts = cached['texts']
+            embeddings = cached['embeddings']
+            self.sources = cached['sources']
+        else:
+            # Generate embeddings
+            self.texts = [chunk.page_content for chunk in chunks]
+            self.sources = [chunk.metadata["source"] for chunk in chunks]
+            embeddings = self.model_embeddings.embed_documents(self.texts)
+            
+            # Cache
+            self.cache_manager.cache_content(cache_key, {
+                'texts': self.texts,
+                'sources': self.sources,
+                'embeddings': embeddings
+            }, "embeddings_direct")
+        
+        # Create FAISS index
+        text_embedding_pairs = zip(self.texts, embeddings)
+        self.vectorstore = FAISS.from_embeddings(
+            text_embedding_pairs, 
+            self.model_embeddings
+        )
+    
+    def retrieve(self, query: str, top_k: int = 5) -> Tuple[List[Document], List[float]]:
+        """Retrieve similar documents."""
+        
+        results = self.vectorstore.similarity_search_with_score(
+            f"search_query: {query}",  # Nomic requires prefix
+            k=top_k
+        )
+        
+        docs, scores = zip(*results)
+        
+        # Normalize scores to [0,1]
+        max_distance = max(scores)
+        normalized_scores = [1 - (dist/max_distance) for dist in scores]
+        
+        return list(docs), normalized_scores
+```
+
+### BM25Retriever
+
+```python
+# src/retrieval/bm25_retriever.py
+
+class BM25Retriever:
+    """
+    BM25 Okapi keyword-based retrieval with caching.
+    
+    BM25 excels at:
+        - Exact keyword matching
+        - Abbreviation/acronym lookup
+        - Technical term search
+    """
+    
+    def __init__(self, config: dict):
+        self.cache_manager = CacheManager(config['paths']['cache_dir'])
+        self.bm25_index = None
+        self.chunks = None
+    
+    def create_index(self, chunks: List[Document]) -> None:
+        """Create BM25 index from document chunks."""
+        
+        self.chunks = chunks
+        
+        # Check cache
+        cache_key = "".join([c.page_content for c in chunks[:100]])
+        cached = self.cache_manager.get_cached(cache_key, "bm25")
+        
+        if cached:
+            self.bm25_index = cached
+            return
+        
+        # Tokenize and create index
+        tokenized_chunks = [chunk.page_content.split() for chunk in chunks]
+        self.bm25_index = BM25Okapi(tokenized_chunks)
+        
+        # Cache
+        self.cache_manager.cache_content(cache_key, self.bm25_index, "bm25")
+    
+    def retrieve(self, query: str, top_k: int = 5) -> Tuple[List[Document], List[float]]:
+        """Retrieve documents using BM25 scoring."""
+        
+        # Tokenize query
+        tokenized_query = query.split()
+        
+        # Score all documents
+        scores = self.bm25_index.get_scores(tokenized_query)
+        
+        # Get top-k
+        top_indices = np.argsort(-scores)[:top_k]
+        retrieved_docs = [self.chunks[i] for i in top_indices]
+        retrieved_scores = [scores[i] for i in top_indices]
+        
+        # Normalize
+        max_score = max(retrieved_scores) if retrieved_scores else 1.0
+        normalized = [s/max_score for s in retrieved_scores]
+        
+        return retrieved_docs, normalized
 ```
 
 ---
 
-## Pipeline Configuration
+## Neural Reranking
 
-### process_config.yaml
+### Reranker Class
+
+```python
+# src/models/reranker.py
+
+class Reranker:
+    """
+    Neural document reranker using cross-encoder models.
+    
+    Uses BAAI/bge-reranker-v2-m3 for precise relevance scoring.
+    Processes query-document pairs through transformer model.
+    """
+    
+    def __init__(self, config: Dict):
+        self.device = config['model']['device_rerank']  # mps/cuda/cpu
+        self.model_name = config['model']['rerank_model']
+        self.batch_size = config['processing']['batch_size_reranking']
+        
+        # Load model
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name)
+        self.model.to(self.device)
+        self.model.eval()
+    
+    def rerank(self, query: str, documents: List[Document], 
+               top_k: Optional[int] = None) -> List[RerankResult]:
+        """Rerank documents by relevance to query."""
+        
+        # Prepare query-document pairs
+        pairs = [[query, doc.page_content] for doc in documents]
+        
+        # Process in batches
+        all_scores = []
+        for i in range(0, len(pairs), self.batch_size):
+            batch = pairs[i:i + self.batch_size]
+            scores = self._process_batch(batch)
+            all_scores.extend(scores)
+        
+        # Create results
+        results = [
+            RerankResult(document=doc, score=float(score), original_rank=idx)
+            for idx, (score, doc) in enumerate(zip(all_scores, documents))
+        ]
+        
+        # Sort by score
+        results.sort(key=lambda x: x.score, reverse=True)
+        
+        return results[:top_k] if top_k else results
+    
+    def _process_batch(self, batch_pairs: List[List[str]]) -> List[float]:
+        """Score a batch of query-document pairs."""
+        
+        with torch.no_grad():
+            inputs = self.tokenizer(
+                batch_pairs,
+                padding=True,
+                truncation=True,
+                return_tensors='pt',
+                max_length=512
+            ).to(self.device)
+            
+            outputs = self.model(**inputs, return_dict=True)
+            scores = outputs.logits.view(-1,).float()
+            
+            return scores.cpu().tolist()
+```
+
+### Reranking Benefits
+
+| Metric | Without Reranking | With Reranking |
+|--------|-------------------|----------------|
+| **Precision@3** | ~70% | ~85% |
+| **Relevance** | Good | Excellent |
+| **Latency** | ~0.5s | ~1.5s |
+
+---
+
+## Response Generation
+
+### ResponseGenerator Class
+
+```python
+# src/response/response_generator.py
+
+class ResponseGenerator:
+    """
+    LLM-based response generation with context awareness.
+    
+    Features:
+        - Context-aware response generation
+        - Query expansion (optional)
+        - Source tracking and citation
+        - Thread-safe LLM handling
+    """
+    
+    def __init__(self, config: Dict):
+        self.config = config
+        self.llm = Llamafile(
+            base_url=config["retrieval"]["llamafile_server_base_url"],
+            seed=2024
+        )
+    
+    def generate_answer(self, query: str, relevant_chunks: List[Document],
+                        metadata: Optional[Dict] = None) -> Dict:
+        """Generate comprehensive answer from retrieved chunks."""
+        
+        try:
+            # Prepare context
+            context = self._prepare_context(relevant_chunks)
+            
+            # Generate response
+            response = self._generate_response(query, context)
+            
+            return {
+                'response': response,
+                'source_documents': [doc.metadata for doc in relevant_chunks],
+                'metadata': metadata or {}
+            }
+            
+        except Exception as e:
+            return {
+                'response': "Error generating response. Please try again.",
+                'error': str(e),
+                'metadata': metadata or {}
+            }
+    
+    def _prepare_context(self, chunks: List[Document]) -> str:
+        """Format chunks with source information."""
+        
+        context_parts = []
+        for i, chunk in enumerate(chunks, 1):
+            source = chunk.metadata.get('source', 'Unknown')
+            context_parts.append(f"[{i}] Source: {source}\n{chunk.page_content}")
+        
+        return "\n\n".join(context_parts)
+    
+    def _generate_response(self, query: str, context: str) -> str:
+        """Generate response using LLM."""
+        
+        prompt = ChatPromptTemplate.from_template("""
+        You are an efficient Q&A assistant that responds based on provided context.
+        
+        Question: {query}
+        
+        Relevant Information:
+        {context}
+        
+        Please provide a response that:
+        1. Directly addresses the question
+        2. Is supported by the provided information
+        3. Is clear and well-organized
+        4. Is as concise as possible
+        5. Clearly states if information is insufficient
+        6. Responds in the language of the query
+        
+        Response:
+        """)
+        
+        messages = prompt.format_messages(query=query, context=context)
+        response = self.llm.invoke(messages)
+        
+        return response
+```
+
+### Query Expansion (Optional)
+
+```python
+def expand_query(self, query: str) -> str:
+    """Improve query clarity using LLM."""
+    
+    prompt = ChatPromptTemplate.from_template("""
+    You are a query processor. Rules:
+    1. NEVER expand acronyms (DAC, API must stay as-is)
+    2. Only fix incomplete grammar
+    3. Return exact original if already complete
+    
+    Examples:
+    Input: "difference REST SOAP"
+    Output: "What is the difference between REST and SOAP?"
+    
+    Original query: {query}
+    Expanded query:
+    """)
+    
+    messages = prompt.format_messages(query=query)
+    return self.llm.invoke(messages).content
+```
+
+---
+
+## Caching System
+
+### CacheManager
+
+```python
+# src/cache/cache.py
+
+class CacheManager:
+    """
+    Manages caching of embeddings, indices, and processed documents.
+    
+    Cache structure:
+        cache/
+        ├── embeddings_direct/    # FAISS embeddings
+        ├── bm25/                 # BM25 indices
+        └── chunks/               # Processed chunks
+    """
+    
+    def __init__(self, cache_dir: str):
+        self.cache_dir = cache_dir
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    
+    def get_cached(self, key: str, namespace: str) -> Optional[Any]:
+        """Retrieve cached item."""
+        
+        cache_path = self._get_path(key, namespace)
+        
+        if cache_path.exists():
+            with open(cache_path, 'rb') as f:
+                return pickle.load(f)
+        return None
+    
+    def cache_content(self, key: str, content: Any, namespace: str) -> None:
+        """Store item in cache."""
+        
+        cache_path = self._get_path(key, namespace)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(cache_path, 'wb') as f:
+            pickle.dump(content, f)
+    
+    def _get_path(self, key: str, namespace: str) -> Path:
+        """Generate cache file path."""
+        
+        # Hash key for filename
+        key_hash = hashlib.md5(key.encode()).hexdigest()
+        return Path(self.cache_dir) / namespace / f"{key_hash}.pkl"
+```
+
+---
+
+## Configuration
+
+### init_config.yaml Reference
+
+```yaml
+# Document processing
+processing:
+  chunk_size: 2000        # Characters per chunk
+  chunk_overlap: 200      # Overlap between chunks
+  batch_size_embeddings: 32
+  batch_size_reranking: 8
+  
+  # Markdown splitting
+  headers_to_split_on:
+    - ["##", "Header 2"]
+    - ["###", "Header 3"]
+    - ["####", "Header 4"]
+
+# Models
+model:
+  embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"
+  rerank_model: "BAAI/bge-reranker-v2-m3"
+  device_rerank: "mps"  # or cuda, cpu
+```
+
+### process_config.yaml Reference
 
 ```yaml
 retrieval:
-  # LLM connection
   llamafile_server_base_url: "http://localhost:8081"
-  
-  # Retrieval settings
-  top_k: 100                    # Candidates for reranking
-  use_bm25: true
-  use_vector: true
-  bm25_weight: 0.2              # 20% BM25, 80% vector
-  
-  # Reranking
-  use_reranking: true
-  
-  # Context selection
-  send_nb_chunks_to_llm: 2      # Chunks to include in prompt
-  
-  # Query expansion
-  use_query_expansion: false
+  send_nb_chunks_to_llm: 2     # Chunks in LLM context
+  use_bm25: true               # Enable keyword search
+  bm25_weight: 0.2             # BM25 contribution
+  top_k: 100                   # Initial retrieval count
+  use_reranking: true          # Enable neural reranking
+  use_query_expansion: false   # LLM query improvement
 ```
 
 ---
 
-## Error Handling in Pipeline
+## Performance Optimization
 
-### Graceful Degradation
+### Embedding Optimization
 
 ```python
-# If reranking fails, fall back to hybrid scores
-try:
-    reranked = reranker.rerank(query, documents)
-except Exception as e:
-    logger.warning(f"Reranking failed: {e}, using hybrid scores")
-    reranked = sorted(documents, key=lambda x: x.score, reverse=True)
+# Batch processing for efficiency
+encode_kwargs = {
+    'normalize_embeddings': True,
+    'batch_size': 32,  # Process 32 texts at once
+    'show_progress': True
+}
 
-# If LLM fails, return error message
-try:
-    response = llm.generate(prompt)
-except Exception as e:
-    return {
-        "response": "I apologize, but I encountered an error generating a response.",
-        "error": str(e)
-    }
+# GPU memory management
+if torch.cuda.is_available():
+    torch.cuda.empty_cache()
+elif torch.backends.mps.is_available():
+    torch.mps.empty_cache()
+```
+
+### Index Optimization
+
+| Optimization | Impact | How |
+|--------------|--------|-----|
+| **Caching** | 10x faster restart | Pickle embeddings |
+| **Batching** | 3x faster embedding | Process 32 at once |
+| **GPU** | 5x faster inference | Use MPS/CUDA |
+| **Quantization** | 4x smaller index | FAISS PQ |
+
+### Query Latency Breakdown
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ Component          │ Time (s)  │ % of Total   │ Optimizable │
+├────────────────────┼───────────┼──────────────┼─────────────┤
+│ Query embedding    │   0.1     │     1%       │ ✓ (cache)   │
+│ FAISS search       │   0.2     │     2%       │ ✓ (GPU)     │
+│ BM25 search        │   0.2     │     2%       │ ✓ (tokenize)│
+│ Reranking          │   1.5     │    15%       │ ✓ (batch)   │
+│ LLM generation     │   8.0     │    80%       │ ✓ (GPU/quant)│
+├────────────────────┼───────────┼──────────────┼─────────────┤
+│ TOTAL              │  ~10s     │   100%       │             │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Next: DevOps →
+## Next Steps
 
-See [06_DEVOPS.md](./06_DEVOPS.md) for Docker deployment and infrastructure.
+- **[Backend Documentation](./02_BACKEND.md)** - API integration
+- **[Incremental Learning](./INCREMENTAL_LEARNING.md)** - Live updates
+- **[Scalability](./SCALABILITY.md)** - Enterprise deployment
 
 ---
 
-*Author: Arnav Angarkar*
+*Last updated: January 2026*

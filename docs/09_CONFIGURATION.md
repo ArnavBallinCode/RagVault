@@ -1,16 +1,31 @@
-# 09. Configuration Reference
+# RagVault Configuration Reference
 
-> Complete guide to all configuration options
+> Complete reference for all configuration files and parameters in the RagVault system.
+
+---
+
+## Table of Contents
+
+1. [Configuration Files](#configuration-files)
+2. [init_config.yaml](#init_configyaml)
+3. [process_config.yaml](#process_configyaml)
+4. [users.json](#usersjson)
+5. [Environment Variables](#environment-variables)
+6. [Frontend Configuration](#frontend-configuration)
+7. [Common Configurations](#common-configurations)
 
 ---
 
 ## Configuration Files
 
-| File | Purpose |
-|------|---------|
-| `config/init_config.yaml` | Model settings, paths, processing |
-| `config/process_config.yaml` | Retrieval, LLM, runtime settings |
-| `config/process_config.docker.yaml` | Docker-specific overrides |
+RagVault uses three main configuration files:
+
+```
+config/
+├── init_config.yaml      # Main system configuration
+├── process_config.yaml   # Retrieval and LLM settings
+└── users.json            # User database (gitignored)
+```
 
 ---
 
@@ -20,85 +35,144 @@
 
 ```yaml
 # =============================================================================
-# MODEL CONFIGURATION
+# INIT CONFIGURATION - Main system configuration
+# File: config/init_config.yaml
 # =============================================================================
+
+# -----------------------------------------------------------------------------
+# LOGGING
+# Configure logging behavior for debugging and monitoring
+# -----------------------------------------------------------------------------
+logging:
+  level: "INFO"              # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  show_progress: true        # Show progress bars during processing
+  hide_http_requests: true   # Hide HTTP request logs (cleaner output)
+  file_logging: true         # Write logs to logs/ directory
+  console_logging: true      # Print logs to console
+
+# -----------------------------------------------------------------------------
+# MODELS
+# Configure AI models for embedding, reranking, and device selection
+# -----------------------------------------------------------------------------
 model:
   # Embedding model for vector search
+  # Recommended: nomic-ai/nomic-embed-text-v1.5 (768 dimensions)
   embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"
-  #   Options:
-  #   - nomic-ai/nomic-embed-text-v1.5 (768 dim, recommended)
-  #   - sentence-transformers/all-MiniLM-L6-v2 (384 dim, faster)
-  #   - BAAI/bge-base-en-v1.5 (768 dim, alternative)
   
-  # Reranker model for neural scoring
+  # Reranker model for result refinement
+  # Recommended: BAAI/bge-reranker-v2-m3 (multilingual)
   rerank_model: "BAAI/bge-reranker-v2-m3"
-  #   Options:
-  #   - BAAI/bge-reranker-v2-m3 (multilingual, recommended)
-  #   - BAAI/bge-reranker-base (English only, faster)
-  #   - cross-encoder/ms-marco-MiniLM-L-6-v2 (smaller)
   
-  # Device for reranker (embedding always uses CPU)
+  # Device for reranking inference
+  # Options: "mps" (Apple Silicon), "cuda" (NVIDIA), "cpu"
   device_rerank: "mps"
-  #   Options:
-  #   - auto (auto-detect best device)
-  #   - mps (Apple Silicon GPU)
-  #   - cuda (NVIDIA GPU)
-  #   - cpu (fallback)
 
-# =============================================================================
-# PROCESSING CONFIGURATION
-# =============================================================================
+# -----------------------------------------------------------------------------
+# INGESTION
+# Configure data loading behavior
+# -----------------------------------------------------------------------------
+ingestion:
+  # Columns to ignore when loading CSV files
+  # Set to None or leave empty to include all columns
+  ignore_columns: None  # Example: ["Query", "Unused_Column"]
+
+# -----------------------------------------------------------------------------
+# PROCESSING
+# Configure document chunking and preprocessing
+# -----------------------------------------------------------------------------
 processing:
-  # Text chunking settings
-  chunk_size: 2000              # Characters per chunk (500-4000)
-  chunk_overlap: 200            # Overlap between chunks (10-20% of chunk_size)
+  # Text used to identify table of contents sections
+  TOC_text: "Table of Contents"
   
-  # Headers for markdown splitting
+  # Markdown headers for document splitting
+  # Format: [header_marker, header_name]
+  headers_to_split_on:
+    - ["##", "Header 2"]
+    - ["###", "Header 3"]
+    - ["####", "Header 4"]
+    - ["Table of Contents", "Table of Contents"]
+  
+  # Headers for URL-scraped content (includes H1)
   headers_to_split_on_for_urls:
     - ["#", "Header 1"]
     - ["##", "Header 2"]
     - ["###", "Header 3"]
+    - ["####", "Header 4"]
+    - ["Table of Contents", "Table of Contents"]
+  
+  # Header key mappings for reconstruction
+  headers_keys:
+    "Header 1": "# "
+    "Header 2": "## "
+    "Header 3": "### "
+    "Header 4": "#### "
+    "Table of Contents": "# "
+  
+  # Parallel processing threads (adjust based on CPU cores)
+  OMP_NUM_THREADS: 15
+  
+  # Chunk size in characters (not tokens!)
+  # Recommended: 2000 for general use, 500-1000 for technical docs
+  chunk_size: 2000
+  
+  # Overlap between chunks for context continuity
+  # Recommended: 10-20% of chunk_size
+  chunk_overlap: 200
+  
+  # Batch sizes for model inference
+  batch_size_embeddings: 32   # Increase for GPU, decrease for memory issues
+  batch_size_reranking: 8     # Smaller due to cross-encoder memory usage
+  
+  # Enable document splitting (set to false for small documents)
+  split_documents: true
 
-# =============================================================================
-# PATH CONFIGURATION
-# =============================================================================
+# -----------------------------------------------------------------------------
+# PATHS
+# Configure directory locations
+# -----------------------------------------------------------------------------
 paths:
-  # Base directories
-  data_dir: "./data"            # Root data directory
-  cache_dir: "./cache"          # Embedding cache
-  log_dir: "./logs"             # Application logs
-  models_dir: "./models"        # LLM binaries
-  
-  # Specific paths
-  raw_data_dir: "./data/raw"    # Input documents
-  processed_dir: "./data/processed"  # Output files
-  upload_dir: "./data/uploads"  # UI uploads
+  cache_dir: "./cache"       # Cached embeddings and indices
+  data_dir: "./data"         # Document storage
+  log_dir: "./logs"          # Log files
 
-# =============================================================================
-# FILE CONFIGURATION
-# =============================================================================
+# -----------------------------------------------------------------------------
+# FILES
+# Configure specific file paths and document sources
+# -----------------------------------------------------------------------------
 files:
-  # Explicit document paths (in addition to data/raw/)
+  # Training and test data (for evaluation benchmarks)
+  train_data: "data/raw/train.csv"
+  test_data: "data/raw/test.csv"
+  train_output: "data/processed/submission_train_final.csv"
+  test_output: "data/processed/submission_test_final.csv"
+  
+  # Document paths to index
+  # Note: data/uploads/ is automatically scanned
   document_paths:
-    - "./data/raw/data.txt"
-    - "./data/raw/document.pdf"
-  
-  # Train/test data (optional, for evaluation)
-  train_file: "./data/train_dataset.csv"
-  test_file: "./data/test_dataset.csv"
-  
-  # Output files
-  train_results_file: "./data/processed/train_results.csv"
-  test_results_file: "./data/processed/test_results.csv"
-
-# =============================================================================
-# LOGGING CONFIGURATION
-# =============================================================================
-logging:
-  level: "INFO"                 # DEBUG, INFO, WARNING, ERROR
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  file: "./logs/rag_system.log"
+    - "data/raw/data.txt"
+    # Add more paths as needed:
+    # - "data/raw/company_wiki.pdf"
+    # - "data/raw/product_docs.md"
 ```
+
+### Key Parameters Explained
+
+#### chunk_size
+
+| Value | Best For | Memory Impact |
+|-------|----------|---------------|
+| 500 | Technical docs, code | Lower |
+| 1000 | Balanced | Medium |
+| 2000 | Long-form content (default) | Higher |
+| 4000 | Legal/research documents | Highest |
+
+#### device_rerank
+
+| Value | Platform | Performance |
+|-------|----------|-------------|
+| `mps` | macOS Apple Silicon | Excellent |
+| `cuda` | Linux/Windows NVIDIA | Excellent |
+| `cpu` | Any | Slow (fallback) |
 
 ---
 
@@ -108,220 +182,386 @@ logging:
 
 ```yaml
 # =============================================================================
-# RETRIEVAL CONFIGURATION
+# PROCESS CONFIGURATION - Retrieval and LLM settings
+# File: config/process_config.yaml
 # =============================================================================
+
 retrieval:
-  # LLM Server Connection
+  # -----------------------------------------------------------------------------
+  # LLM Server
+  # -----------------------------------------------------------------------------
+  
+  # URL of the Llamafile server
+  # Default: http://localhost:8081
   llamafile_server_base_url: "http://localhost:8081"
-  #   Local: http://localhost:8081
-  #   Docker: http://llm-server:8081 (overridden by env var)
   
-  # Hybrid retrieval weights
-  bm25_weight: 0.2              # 0.0 = pure vector, 1.0 = pure BM25
-  #   Recommended: 0.1-0.3 for most use cases
-  #   Higher BM25 for: technical docs, code, exact terms
-  #   Lower BM25 for: conversational, conceptual queries
+  # Number of chunks to send to LLM for response generation
+  # Higher = more context but slower and may exceed context window
+  # Recommended: 2-5 depending on chunk_size
+  send_nb_chunks_to_llm: 2
   
-  # Retrieval depth
-  top_k: 100                    # Candidates for reranking (50-200)
+  # -----------------------------------------------------------------------------
+  # Retrieval Settings
+  # -----------------------------------------------------------------------------
   
-  # Method toggles
-  use_bm25: true                # Enable BM25 keyword search
-  use_vector: true              # Enable vector semantic search
-  use_reranking: true           # Enable neural reranking
+  # Enable BM25 keyword search (hybrid mode)
+  # Set to false for pure vector search
+  use_bm25: true
   
-  # Query expansion
-  use_query_expansion: false    # LLM-based query enhancement
+  # Weight of BM25 in hybrid scoring (0.0 to 1.0)
+  # 0.0 = pure vector search
+  # 1.0 = pure BM25 search
+  # Recommended: 0.2-0.3 for semantic-heavy, 0.5 for balanced
+  bm25_weight: 0.2
   
-  # Context for LLM
-  send_nb_chunks_to_llm: 2      # Chunks after reranking (1-5)
-  #   More chunks = more context but slower/more expensive
-  #   Fewer chunks = faster but might miss info
+  # Number of documents to retrieve initially
+  # Reranker will then select top k from these
+  top_k: 100
+  
+  # Enable neural reranking for improved precision
+  # Recommended: true (adds ~1s latency but improves quality)
+  use_reranking: true
+  
+  # Enable LLM-based query expansion
+  # Expands incomplete queries before retrieval
+  # Recommended: false (adds latency, marginal benefit)
+  use_query_expansion: false
+```
 
-# =============================================================================
-# LLM GENERATION CONFIGURATION  
-# =============================================================================
-llm:
-  # Temperature (creativity)
-  temperature: 0.7              # 0.0-1.0, lower = more deterministic
-  
-  # Max output tokens
-  max_tokens: 512               # Response length limit
-  
-  # Sampling parameters
-  top_p: 0.9                    # Nucleus sampling
-  top_k: 40                     # Top-k sampling
-  repeat_penalty: 1.1           # Penalize repetition
+### Parameter Tuning Guide
+
+#### bm25_weight
+
+```
+Query Type                 → Recommended bm25_weight
+
+"What is authentication?"  → 0.2 (semantic understanding)
+"JWT token"                → 0.5 (keyword matching important)
+"error code E-5021"        → 0.8 (exact match critical)
+```
+
+#### send_nb_chunks_to_llm
+
+```
+Chunk Size  │  Recommended Chunks  │  Approx Tokens
+────────────┼──────────────────────┼────────────────
+500         │  4-6                 │  2000-3000
+1000        │  3-4                 │  3000-4000
+2000        │  2-3                 │  4000-6000
+4000        │  1-2                 │  4000-8000
+
+Note: Stay within model's context window (128K for Mistral Nemo)
 ```
 
 ---
 
-## Docker Configuration
+## users.json
 
-### process_config.docker.yaml
+### Structure
 
-```yaml
-retrieval:
-  # Docker uses internal network
-  llamafile_server_base_url: "http://llm-server:8081"
-```
-
-### Environment Variable Overrides
-
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `LLAMAFILE_SERVER_URL` | LLM server address | `http://llm-server:8081` |
-| `FORCE_CPU` | Force CPU for reranker | `1`, `true`, `yes` |
-| `LOG_LEVEL` | Override log level | `DEBUG` |
-
-### How Overrides Work
-
-```python
-# Environment takes priority over config
-llm_url = os.environ.get(
-    "LLAMAFILE_SERVER_URL",
-    config["retrieval"]["llamafile_server_base_url"]
-)
-
-# Force CPU for Docker compatibility
-if os.environ.get('FORCE_CPU', '').lower() in ('1', 'true', 'yes'):
-    device = 'cpu'
-```
-
----
-
-## Configuration Loading
-
-### Code Path
-
-```python
-# src/utils/helpers.py
-def load_config(config_path: str) -> dict:
-    """Load YAML configuration file"""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config
-
-# initialize_rag.py
-class RAGInitializer:
-    def __init__(self, init_config_path: str, process_config_path: str):
-        self.init_config = load_config(init_config_path)
-        self.process_config = load_config(process_config_path)
-```
-
-### Configuration Merging
-
-```python
-# Combine configs for components that need both
-combined_config = {
-    **self.init_config,
-    'retrieval': self.process_config['retrieval']
+```json
+{
+  "username": {
+    "password": "sha256_hash_of_password",
+    "role": "admin|user",
+    "name": "Display Name"
+  }
 }
-
-retriever = HybridRetriever(combined_config)
 ```
 
----
+### Default Users
 
-## Tuning Guide
-
-### For Speed
-
-```yaml
-# init_config.yaml
-model:
-  embedding_model_hf: "sentence-transformers/all-MiniLM-L6-v2"  # 4x faster
-  device_rerank: "mps"  # Use GPU
-
-processing:
-  chunk_size: 1000      # Smaller chunks, faster processing
-
-# process_config.yaml
-retrieval:
-  top_k: 50             # Fewer candidates to rerank
-  send_nb_chunks_to_llm: 1  # Less context
+```json
+{
+  "admin": {
+    "password": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+    "role": "admin",
+    "name": "Administrator"
+  },
+  "user": {
+    "password": "04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb",
+    "role": "user",
+    "name": "Standard User"
+  }
+}
 ```
 
-### For Quality
-
-```yaml
-# init_config.yaml
-model:
-  embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"  # Best quality
-  rerank_model: "BAAI/bge-reranker-v2-m3"  # Best reranker
-
-processing:
-  chunk_size: 2000      # Larger context per chunk
-  chunk_overlap: 400    # More overlap
-
-# process_config.yaml
-retrieval:
-  top_k: 200            # More candidates
-  send_nb_chunks_to_llm: 3  # More context
-  bm25_weight: 0.3      # Slightly more keyword matching
-```
-
-### For Memory-Constrained Systems
-
-```yaml
-# init_config.yaml  
-model:
-  embedding_model_hf: "sentence-transformers/all-MiniLM-L6-v2"  # Smaller
-  device_rerank: "cpu"  # No GPU memory
-
-processing:
-  chunk_size: 1500      # Smaller chunks
-
-# process_config.yaml
-retrieval:
-  top_k: 30             # Very few candidates
-  use_reranking: false  # Skip reranking (saves memory)
-```
-
----
-
-## Validation
-
-### Common Mistakes
-
-| Setting | Wrong | Right |
-|---------|-------|-------|
-| `chunk_overlap` | > chunk_size | < 25% of chunk_size |
-| `bm25_weight` | > 1.0 | 0.0 to 1.0 |
-| `top_k` | > 1000 | 50 to 200 |
-| `send_nb_chunks_to_llm` | > 10 | 1 to 5 |
-
-### Config Validation Code
+### Creating Password Hashes
 
 ```python
-def validate_config(config: dict) -> List[str]:
-    """Validate configuration and return list of warnings"""
-    warnings = []
-    
-    # Check chunk settings
-    chunk_size = config['processing']['chunk_size']
-    chunk_overlap = config['processing']['chunk_overlap']
-    
-    if chunk_overlap >= chunk_size:
-        warnings.append(f"chunk_overlap ({chunk_overlap}) >= chunk_size ({chunk_size})")
-    
-    if chunk_overlap > chunk_size * 0.25:
-        warnings.append(f"chunk_overlap ({chunk_overlap}) > 25% of chunk_size")
-    
-    # Check weights
-    bm25_weight = config['retrieval']['bm25_weight']
-    if not 0 <= bm25_weight <= 1:
-        warnings.append(f"bm25_weight ({bm25_weight}) must be 0-1")
-    
-    return warnings
+import hashlib
+
+password = "my_secure_password"
+hash_value = hashlib.sha256(password.encode()).hexdigest()
+print(hash_value)
+```
+
+### Adding Users via UI
+
+1. Login as admin
+2. Navigate to Users page
+3. Fill in the form:
+   - Username
+   - Password
+   - Display Name
+   - Role (admin/user)
+4. Click "Add User"
+
+---
+
+## Environment Variables
+
+While RagVault primarily uses YAML configuration, some settings can be overridden via environment variables:
+
+```bash
+# LLM Server
+export LLAMAFILE_URL="http://localhost:8081"
+
+# Device selection
+export RAGVAULT_DEVICE="mps"  # or "cuda", "cpu"
+
+# Logging
+export RAGVAULT_LOG_LEVEL="DEBUG"
+
+# Cache directory
+export RAGVAULT_CACHE_DIR="./custom_cache"
+```
+
+### Using in Code
+
+```python
+import os
+
+llm_url = os.environ.get(
+    "LLAMAFILE_URL",
+    config['retrieval']['llamafile_server_base_url']
+)
 ```
 
 ---
 
-## Next: Troubleshooting →
+## Frontend Configuration
 
-See [10_TROUBLESHOOTING.md](./10_TROUBLESHOOTING.md) for common issues.
+### vite.config.ts
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    host: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '')
+      }
+    }
+  }
+})
+```
+
+### Environment Variables (.env.local)
+
+```bash
+# API Configuration
+VITE_API_URL=http://localhost:8000
+VITE_LLM_URL=http://localhost:8081
+
+# Features
+VITE_ENABLE_DEVTOOLS=true
+```
+
+### Using Environment Variables
+
+```typescript
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+```
 
 ---
 
-*Author: Arnav Angarkar*
+## Common Configurations
+
+### Development Setup
+
+```yaml
+# init_config.yaml (development)
+logging:
+  level: "DEBUG"
+  show_progress: true
+
+processing:
+  chunk_size: 1000        # Smaller for faster testing
+  batch_size_embeddings: 16
+
+model:
+  device_rerank: "cpu"    # Works without GPU
+```
+
+```yaml
+# process_config.yaml (development)
+retrieval:
+  llamafile_server_base_url: "http://localhost:8081"
+  top_k: 50               # Faster retrieval
+  use_reranking: false    # Skip for speed
+```
+
+### Production Setup
+
+```yaml
+# init_config.yaml (production)
+logging:
+  level: "WARNING"
+  show_progress: false
+  file_logging: true
+
+processing:
+  chunk_size: 2000
+  batch_size_embeddings: 64
+
+model:
+  device_rerank: "mps"    # or "cuda"
+```
+
+```yaml
+# process_config.yaml (production)
+retrieval:
+  top_k: 100
+  use_reranking: true
+  bm25_weight: 0.2
+```
+
+### High-Performance Setup
+
+```yaml
+# For maximum quality on powerful hardware
+processing:
+  chunk_size: 1500
+  chunk_overlap: 300
+  batch_size_embeddings: 128
+  batch_size_reranking: 32
+
+retrieval:
+  top_k: 200
+  send_nb_chunks_to_llm: 5
+  use_reranking: true
+  use_query_expansion: true
+```
+
+### Low-Memory Setup
+
+```yaml
+# For constrained environments
+processing:
+  chunk_size: 500
+  batch_size_embeddings: 8
+  batch_size_reranking: 2
+
+model:
+  device_rerank: "cpu"
+
+retrieval:
+  top_k: 30
+  send_nb_chunks_to_llm: 1
+  use_reranking: false
+```
+
+---
+
+## Configuration Validation
+
+### Validate Script
+
+```python
+#!/usr/bin/env python3
+"""Validate RagVault configuration files."""
+
+import yaml
+from pathlib import Path
+
+def validate_init_config(config):
+    """Validate init_config.yaml"""
+    errors = []
+    
+    # Check required sections
+    required = ['logging', 'model', 'processing', 'paths', 'files']
+    for section in required:
+        if section not in config:
+            errors.append(f"Missing section: {section}")
+    
+    # Validate model settings
+    if 'model' in config:
+        valid_devices = ['mps', 'cuda', 'cpu']
+        device = config['model'].get('device_rerank', 'cpu')
+        if device not in valid_devices:
+            errors.append(f"Invalid device_rerank: {device}")
+    
+    # Validate processing settings
+    if 'processing' in config:
+        chunk_size = config['processing'].get('chunk_size', 0)
+        if chunk_size < 100 or chunk_size > 10000:
+            errors.append(f"chunk_size should be 100-10000, got: {chunk_size}")
+        
+        overlap = config['processing'].get('chunk_overlap', 0)
+        if overlap >= chunk_size:
+            errors.append("chunk_overlap must be less than chunk_size")
+    
+    return errors
+
+def validate_process_config(config):
+    """Validate process_config.yaml"""
+    errors = []
+    
+    if 'retrieval' not in config:
+        errors.append("Missing 'retrieval' section")
+        return errors
+    
+    retrieval = config['retrieval']
+    
+    # Validate weights
+    bm25_weight = retrieval.get('bm25_weight', 0)
+    if not 0 <= bm25_weight <= 1:
+        errors.append(f"bm25_weight must be 0-1, got: {bm25_weight}")
+    
+    # Validate top_k
+    top_k = retrieval.get('top_k', 0)
+    if top_k < 1 or top_k > 1000:
+        errors.append(f"top_k should be 1-1000, got: {top_k}")
+    
+    return errors
+
+if __name__ == "__main__":
+    # Load and validate init_config
+    with open("config/init_config.yaml") as f:
+        init_config = yaml.safe_load(f)
+    
+    errors = validate_init_config(init_config)
+    
+    # Load and validate process_config
+    with open("config/process_config.yaml") as f:
+        process_config = yaml.safe_load(f)
+    
+    errors.extend(validate_process_config(process_config))
+    
+    if errors:
+        print("❌ Configuration errors found:")
+        for error in errors:
+            print(f"  - {error}")
+    else:
+        print("✅ All configuration files are valid!")
+```
+
+---
+
+## Next Steps
+
+- **[Overview](./01_OVERVIEW.md)** - System architecture
+- **[RAG Pipeline](./05_RAG_PIPELINE.md)** - How config affects processing
+- **[LLM Integration](./04_LLM_INTEGRATION.md)** - Model configuration
+
+---
+
+*Last updated: January 2026*

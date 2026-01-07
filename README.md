@@ -55,11 +55,27 @@ RagVault enables organizations to build a secure, private knowledge base from in
 - Document-grounded responses with source citations
 
 ### Interactive Interface
-- Modern web UI built with Streamlit
+
+RagVault provides **two user interface options**:
+
+#### React + Vite UI (Primary - Port 5173)
+- **Modern visual pipeline** with ReactFlow for interactive RAG visualization
+- Drag-and-drop document upload with real-time processing feedback
+- Clean, dark-themed dashboard interface
+- TypeScript-based for type safety
+- **Recommended for:** Full-featured visual experience and developer workflows
+
+#### Streamlit UI (Memory-Efficient - Port 8501)
+- Feature-rich chat interface with role-based access control (RBAC)
+- Built-in user management (admin/user roles)
+- Web scraping capabilities with automatic indexing
+- **Lower memory footprint** - no Node.js/npm dependencies required
+- **Recommended for:** Resource-constrained environments, laptop deployments, or when minimal dependencies are preferred
+
+**Both interfaces share:**
 - Natural language query interface
 - Source citation and document referencing
 - Confidence scoring for responses
-- Role-based access control
 
 ### Security and Privacy
 - 100% offline operation
@@ -101,24 +117,27 @@ RagVault enables organizations to build a secure, private knowledge base from in
 ### System Components
 
 ```
-+-------------------+     +-------------------+     +-------------------+
-|   Web Interface   |     |    RAG Pipeline   |     |    LLM Server     |
-|   (Streamlit)     |<--->|   (Python Core)   |<--->|   (Llamafile)     |
-+-------------------+     +-------------------+     +-------------------+
-                                   |
-                    +--------------+--------------+
-                    |              |              |
-              +-----v-----+  +-----v-----+  +-----v-----+
-              |   FAISS   |  |   BM25    |  |  Reranker |
-              |  Vectors  |  |   Index   |  |   Model   |
-              +-----------+  +-----------+  +-----------+
++---------------------------+     +-------------------+     +-------------------+
+|     USER INTERFACES       |     |    RAG Pipeline   |     |    LLM Server     |
+| +-------+  +-----------+  |     |   (Python Core)   |     |   (Llamafile)     |
+| | React |  | Streamlit |  |<--->|                   |<--->|   Port 8081       |
+| | :5173 |  |   :8501   |  |     +-------------------+     +-------------------+
++---------------------------+              |
+         |                      +--------------+--------------+
+         v                      |              |              |
++-------------------+     +-----v-----+  +-----v-----+  +-----v-----+
+| FastAPI Backend   |     |   FAISS   |  |   BM25    |  |  Reranker |
+|    Port 8000      |     |  Vectors  |  |   Index   |  |   Model   |
++-------------------+     +-----------+  +-----------+  +-----------+
 ```
 
 ### Technology Stack
 
 | Layer | Technology | Purpose |
 |-------|------------|---------|
-| Frontend | Streamlit | Web interface with authentication |
+| Frontend (Primary) | React 19 + Vite | Visual pipeline interface (TypeScript) |
+| Frontend (Alt) | Streamlit | Memory-efficient UI with RBAC |
+| Backend API | FastAPI | REST API server (Port 8000) |
 | Embeddings | Nomic Embed v1.5 | Text vectorization (768-dim) |
 | Vector Store | FAISS | Similarity search |
 | Keyword Search | BM25 (rank-bm25) | Lexical matching |
@@ -374,17 +393,35 @@ retrieval:
 
 ### Starting the System
 
-1. Start the LLM server:
+1. **Start the LLM server** (required for both UIs):
    ```bash
    ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
    ```
 
-2. Launch the web interface:
+2. **Start the FastAPI backend** (required for React UI):
+   ```bash
+   python api_server.py
+   ```
+
+3. **Choose your preferred interface:**
+
+   **Option A: React UI (Recommended - Full Visual Experience)**
+   ```bash
+   cd frontend
+   npm install  # First time only
+   npm run dev
+   ```
+   Open http://localhost:5173 in your browser
+
+   **Option B: Streamlit UI (Memory-Efficient Alternative)**
    ```bash
    streamlit run streamlit_app.py
    ```
+   Open http://localhost:8501 in your browser
 
-3. Open http://localhost:8501 in your browser
+> **💡 When to use each UI:**
+> - **React UI**: Best for visual pipeline interaction, modern developer experience, and full-featured interface
+> - **Streamlit UI**: Best for lower-resource machines, when Node.js isn't available, or when you need built-in user management (RBAC)
 
 ### Default User Accounts
 

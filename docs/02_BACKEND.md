@@ -1,533 +1,722 @@
-# 02. Backend Architecture
+# RagVault Backend Documentation
 
-> Complete backend internals, class structures, and data flow
-
----
-
-## Backend Overview
-
-The backend is organized into modular Python packages under `src/`:
-
-```
-src/
-├── __init__.py              # Package init with version/author
-├── data/                    # Data ingestion & preprocessing
-│   ├── data_ingestion.py    # Document loading
-│   ├── data_preprocessing.py # Chunking & text splitting
-│   ├── jupyter_and_code_spliter.py
-│   └── loaders/             # File type handlers
-│       ├── base.py          # Base loader interface
-│       ├── file_loader.py   # Multi-format file loader
-│       ├── file_converter.py # Office document conversion
-│       └── web_scraper.py   # URL scraping
-├── models/
-│   └── reranker.py          # Neural reranking model
-├── retrieval/
-│   ├── bm25_retriever.py    # BM25 keyword search
-│   ├── vector_retriever.py  # FAISS vector search
-│   └── hybrid_retriever.py  # Combined retrieval
-├── response/
-│   └── response_generator.py # LLM integration
-├── cache/
-│   └── cache.py             # Embedding cache management
-└── utils/
-    └── helpers.py           # Logging, config, utilities
-```
+> Complete technical reference for the FastAPI backend server, RAG initialization, and Python core components.
 
 ---
 
-## Core Entry Point: RAGInitializer
+## Table of Contents
 
-**File:** `initialize_rag.py`
+1. [Architecture Overview](#architecture-overview)
+2. [API Server](#api-server)
+3. [RAG Initialization](#rag-initialization)
+4. [API Endpoints](#api-endpoints)
+5. [Data Models](#data-models)
+6. [Error Handling](#error-handling)
+7. [Configuration](#configuration)
+8. [Development Guide](#development-guide)
 
-This is the main orchestrator that initializes all components.
+---
 
-### Code Walkthrough
+## Architecture Overview
+
+### Backend Components
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           BACKEND ARCHITECTURE                              │
+└────────────────────────────────────────────────────────────────────────────┘
+
+                    ┌─────────────────────────────────┐
+                    │        api_server.py            │
+                    │       (FastAPI Server)          │
+                    │         Port 8000               │
+                    └─────────────┬───────────────────┘
+                                  │
+                                  ▼
+                    ┌─────────────────────────────────┐
+                    │      initialize_rag.py          │
+                    │      (RAGInitializer)           │
+                    └─────────────┬───────────────────┘
+                                  │
+        ┌─────────────────────────┼─────────────────────────┐
+        │                         │                         │
+        ▼                         ▼                         ▼
+┌───────────────┐       ┌─────────────────┐       ┌───────────────┐
+│ src/data/     │       │ src/retrieval/  │       │ src/response/ │
+│               │       │                 │       │               │
+│ DataIngestion │       │ HybridRetriever │       │ Response      │
+│ DataPreproc.. │       │ VectorRetriever │       │ Generator     │
+│ FileLoader    │       │ BM25Retriever   │       │               │
+└───────────────┘       └─────────────────┘       └───────────────┘
+        │                         │                         │
+        ▼                         ▼                         ▼
+┌───────────────┐       ┌─────────────────┐       ┌───────────────┐
+│ src/models/   │       │ src/cache/      │       │ External:     │
+│               │       │                 │       │ Llamafile     │
+│ Reranker      │       │ CacheManager    │       │ (Port 8081)   │
+└───────────────┘       └─────────────────┘       └───────────────┘
+```
+
+### File Structure
+
+```
+/
+├── api_server.py              # FastAPI REST server (315 lines)
+├── initialize_rag.py          # RAG system initializer (93 lines)
+├── init_cache_data.py         # Offline cache builder
+├── process_single_query.py    # CLI query tool
+├── streamlit_app.py           # Streamlit UI (871 lines)
+│
+└── src/
+    ├── __init__.py            # Package metadata
+    ├── cache/
+    │   └── cache.py           # CacheManager (189 lines)
+    ├── data/
+    │   ├── data_ingestion.py  # DataIngestion (317 lines)
+    │   ├── data_preprocessing.py  # DataPreprocessor (491 lines)
+    │   └── loaders/
+    │       ├── base.py        # BaseLoader interface
+    │       ├── file_loader.py # FileLoader (428 lines)
+    │       ├── file_converter.py  # OfficeConverter
+    │       └── web_scraper.py # EnhancedWebLoader (259 lines)
+    ├── models/
+    │   └── reranker.py        # Reranker (227 lines)
+    ├── retrieval/
+    │   ├── bm25_retriever.py  # BM25Retriever (146 lines)
+    │   ├── hybrid_retriever.py # HybridRetriever (190 lines)
+    │   └── vector_retriever.py # VectorRetriever (266 lines)
+    ├── response/
+    │   └── response_generator.py  # ResponseGenerator (226 lines)
+    └── utils/
+        └── helpers.py         # Utility functions
+```
+
+---
+
+## API Server
+
+### Overview
+
+The API server (`api_server.py`) is the main entry point for the backend, providing a RESTful interface to the RAG system.
+
+### Startup Sequence
 
 ```python
+# api_server.py - Startup event (lines 92-106)
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize RAG system on startup"""
+    global rag_components
+    try:
+        logger.info("Initializing RAG system...")
+        
+        # 1. Load configuration files
+        initializer = RAGInitializer(
+            "config/init_config.yaml",
+            "config/process_config.yaml"
+        )
+        
+        # 2. Initialize all components
+        rag_components = initializer.initialize()
+        
+        # 3. Build retrieval indices
+        rag_components.retriever.initialize(rag_components.original_chunks)
+        
+        logger.info("RAG system initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize RAG system: {e}")
+        raise
+```
+
+### CORS Configuration
+
+```python
+# api_server.py - CORS middleware (lines 79-89)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # React frontend
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+### Running the Server
+
+```bash
+# Development mode
+uvicorn api_server:app --reload --port 8000
+
+# Production mode
+python api_server.py  # Uses uvicorn internally
+
+# With conda environment
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate rag_project
+python api_server.py
+```
+
+---
+
+## RAG Initialization
+
+### RAGComponents Dataclass
+
+```python
+# initialize_rag.py (lines 13-24)
+
 @dataclass
 class RAGComponents:
-    """Container for all initialized RAG components"""
-    retriever: HybridRetriever       # Search engine
-    reranker: Reranker               # Neural scorer
-    response_generator: ResponseGenerator  # LLM interface
-    train_df: pd.DataFrame           # Training data
-    test_df: pd.DataFrame            # Test data
-    original_chunks: List            # Document chunks
-    init_config: Dict                # Init config
-    process_config: Dict             # Process config
+    """Container for all RAG system components."""
+    
+    retriever: HybridRetriever          # Combined FAISS + BM25 search
+    reranker: Reranker                  # Neural cross-encoder
+    response_generator: ResponseGenerator  # LLM wrapper
+    train_df: pd.DataFrame              # Training data (optional)
+    test_df: pd.DataFrame               # Test data (optional)
+    train_results: pd.DataFrame         # Saved results
+    test_results: pd.DataFrame          # Saved results
+    original_chunks: List               # All document chunks
+    init_config: Dict                   # init_config.yaml
+    process_config: Dict                # process_config.yaml
 ```
 
-### Initialization Sequence
+### Initialization Flow
 
-```
-RAGInitializer.initialize()
-         │
-         ├── 1. Load configs (init_config.yaml, process_config.yaml)
-         │
-         ├── 2. Initialize DataIngestion
-         │       └── Sets up file loaders for PDF, DOCX, TXT, etc.
-         │
-         ├── 3. Initialize DataPreprocessor
-         │       └── Configures text splitter with chunk_size=2000
-         │
-         ├── 4. Initialize HybridRetriever
-         │       ├── Creates BM25Retriever
-         │       └── Creates VectorRetriever (loads embedding model)
-         │
-         ├── 5. Initialize Reranker
-         │       └── Loads bge-reranker-v2-m3 model
-         │
-         ├── 6. Initialize ResponseGenerator
-         │       └── Connects to llamafile server
-         │
-         ├── 7. Load documents from data/raw/
-         │       └── Uses DataIngestion.load_documents()
-         │
-         ├── 8. Process documents into chunks
-         │       └── Uses DataPreprocessor.process_documents()
-         │
-         └── 9. Return RAGComponents dataclass
+```python
+# initialize_rag.py - RAGInitializer.initialize() (lines 38-84)
+
+def initialize(self) -> RAGComponents:
+    """Initialize all components and prepare data."""
+    
+    # Step 1: Create data handlers
+    data_ingestion = DataIngestion(self.init_config)
+    data_preprocessor = DataPreprocessor(self.init_config)
+    
+    # Step 2: Merge configs for retrieval
+    combined_config = {
+        **self.init_config,
+        'retrieval': self.process_config['retrieval']
+    }
+    
+    # Step 3: Create core components
+    retriever = HybridRetriever(combined_config)
+    reranker = Reranker(combined_config)
+    response_generator = ResponseGenerator(combined_config)
+    
+    # Step 4: Load and process documents
+    docs = data_ingestion.load_documents()
+    original_chunks = data_preprocessor.process_documents(docs)
+    
+    # Step 5: Return assembled components
+    return RAGComponents(
+        retriever=retriever,
+        reranker=reranker,
+        response_generator=response_generator,
+        original_chunks=original_chunks,
+        # ... other fields
+    )
 ```
 
 ---
 
-## Data Ingestion Layer
+## API Endpoints
 
-**File:** `src/data/data_ingestion.py`
-
-### Class: DataIngestion
-
-```python
-class DataIngestion:
-    def __init__(self, config: dict):
-        self.config = config
-        self.data_dir = config['paths']['data_dir']
-        
-    def load_documents(self) -> List[Document]:
-        """Load all documents from data/raw/ directory"""
-        # Walks through data/raw/ and data/raw/scraped/
-        # Uses appropriate loader for each file type
-        
-    def load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Load train/test CSV data if available"""
-```
-
-### Document Loading Flow
+### Health Check
 
 ```
-data/raw/
-    ├── document.pdf    ──────┐
-    ├── notes.txt       ──────┤
-    ├── report.docx     ──────┼──► FileLoader.load()
-    └── scraped/        ──────┤         │
-        └── page.md     ──────┘         ▼
-                                  List[Document]
-                                        │
-                              Each Document has:
-                              ├── page_content: str
-                              └── metadata: dict
-                                    ├── source: "path/to/file"
-                                    └── page: 1 (for PDFs)
+GET /health
 ```
 
-### Supported File Types
-
-| Extension | Loader Class | Library |
-|-----------|--------------|---------|
-| `.pdf` | PyMuPDFLoader | pymupdf |
-| `.docx` | Docx2txtLoader | docx2txt |
-| `.txt` | TextLoader | langchain |
-| `.md` | UnstructuredMarkdownLoader | unstructured |
-| `.csv` | CSVLoader | langchain |
-
----
-
-## Data Preprocessing Layer
-
-**File:** `src/data/data_preprocessing.py`
-
-### Class: DataPreprocessor
-
-```python
-class DataPreprocessor:
-    def __init__(self, config: dict):
-        self.chunk_size = config['processing']['chunk_size']      # 2000
-        self.chunk_overlap = config['processing']['chunk_overlap'] # 200
-        
-    def process_documents(self, docs: List[Document]) -> List[Document]:
-        """Split documents into chunks"""
-```
-
-### Chunking Process Step-by-Step
-
-```
-STEP 1: Receive raw document
-┌──────────────────────────────────────────────────────────────────┐
-│  Document: "Lorem ipsum dolor sit amet... [5000 characters]"     │
-└──────────────────────────────────────────────────────────────────┘
-
-STEP 2: Apply RecursiveCharacterTextSplitter
-┌──────────────────────────────────────────────────────────────────┐
-│  Parameters:                                                      │
-│    chunk_size = 2000                                             │
-│    chunk_overlap = 200                                           │
-│    separators = ["\n\n", "\n", " ", ""]                         │
-└──────────────────────────────────────────────────────────────────┘
-
-STEP 3: Generate overlapping chunks
-┌────────────────────┐
-│     CHUNK 1        │
-│  chars 0-2000      │
-│         ┌──────────┼────────────────────┐
-│         │ OVERLAP  │     CHUNK 2        │
-└─────────┼──────────┘  chars 1800-3800   │
-          │ 200 chars │          ┌────────┼────────────────────┐
-          └───────────┼──────────┼────────┘     CHUNK 3        │
-                      │          │ OVERLAP │  chars 3600-5000   │
-                      └──────────┼─────────┼───────────────────┘
-                                 └─────────┘
-
-STEP 4: Output list of chunk documents
-[Document(chunk1), Document(chunk2), Document(chunk3)]
-```
-
-### Why Overlapping Chunks?
-
-| Without Overlap | With Overlap |
-|-----------------|--------------|
-| Information at boundaries lost | Context preserved |
-| Queries spanning chunks fail | Better retrieval accuracy |
-| Faster indexing | Slightly more storage |
-
----
-
-## Retrieval Layer
-
-### BM25 Retriever
-
-**File:** `src/retrieval/bm25_retriever.py`
-
-BM25 (Best Matching 25) is a statistical ranking function.
-
-```python
-class BM25Retriever:
-    def __init__(self, config: dict):
-        self.cache_manager = CacheManager(config['paths']['cache_dir'])
-        
-    def create_index(self, chunks: List[Document]) -> None:
-        """Create BM25 index from document chunks"""
-        # Tokenize each chunk
-        # Build inverted index
-        # Cache to disk for fast reload
-        
-    def retrieve(self, query: str, top_k: int) -> Tuple[List[Document], List[float]]:
-        """Search using BM25 algorithm"""
-```
-
-#### BM25 Algorithm Explained
-
-```
-For query Q with terms q1, q2, ..., qn
-For document D:
-
-score(D, Q) = Σ IDF(qi) × (f(qi,D) × (k1 + 1))
-              ─────────────────────────────────
-              f(qi,D) + k1 × (1 - b + b × |D|/avgdl)
-
-Where:
-  • IDF(qi) = log((N - n(qi) + 0.5) / (n(qi) + 0.5))
-  • f(qi,D) = frequency of term qi in document D
-  • |D| = length of document D
-  • avgdl = average document length
-  • k1 = 1.5 (term frequency saturation)
-  • b = 0.75 (length normalization)
-```
-
-### Vector Retriever
-
-**File:** `src/retrieval/vector_retriever.py`
-
-```python
-class VectorRetriever:
-    def __init__(self, config: dict):
-        self.embedding_model = HuggingFaceEmbeddings(
-            model_name="nomic-ai/nomic-embed-text-v1.5"
-        )
-        self.vectorstore = None  # FAISS index
-        
-    def create_vectorstore(self, chunks: List[Document]) -> None:
-        """Create FAISS index from document chunks"""
-        # Embed all chunks (768-dim vectors)
-        # Build FAISS index
-        # Cache embeddings to disk
-        
-    def retrieve(self, query: str, top_k: int) -> Tuple[List[Document], List[float]]:
-        """Search using vector similarity"""
-```
-
-#### Embedding Process
-
-```
-Input: "What is the Matter protocol?"
-         │
-         ▼
-┌─────────────────────────────────────────────┐
-│  nomic-embed-text-v1.5 Model                │
-│  (Sentence Transformer, 768 dimensions)     │
-└─────────────────────────────────────────────┘
-         │
-         ▼
-Output: [0.023, -0.156, 0.892, ..., 0.445]  (768 floats)
-```
-
-#### FAISS Index
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                     FAISS INDEX                                   │
-│                                                                   │
-│  Chunk 1: [0.1, 0.2, ..., 0.3] ─────┐                           │
-│  Chunk 2: [0.4, 0.5, ..., 0.6] ─────┤                           │
-│  Chunk 3: [0.7, 0.8, ..., 0.9] ─────┼──► Optimized for          │
-│  ...                           ─────┤    similarity search       │
-│  Chunk N: [0.2, 0.3, ..., 0.4] ─────┘    (cosine/L2)            │
-└──────────────────────────────────────────────────────────────────┘
-                           │
-          Query: [0.15, 0.25, ..., 0.35]
-                           │
-                           ▼
-              Top-K most similar chunks
-```
-
-### Hybrid Retriever
-
-**File:** `src/retrieval/hybrid_retriever.py`
-
-Combines BM25 and vector search results.
-
-```python
-class HybridRetriever:
-    def __init__(self, config: dict):
-        self.bm25_weight = 0.2   # 20% BM25
-        self.vector_weight = 0.8  # 80% Vector
-        self.bm25_retriever = BM25Retriever(config)
-        self.vector_retriever = VectorRetriever(config)
-        
-    def retrieve(self, query: str, top_k: int) -> List[RetrievalResult]:
-        """Combine BM25 and vector retrieval"""
-```
-
-#### Score Fusion
-
-```
-For each document D retrieved by either method:
-
-final_score(D) = (bm25_score(D) × 0.2) + (vector_score(D) × 0.8)
-
-                    ┌──────────────────────────────────────┐
-                    │           SCORE FUSION                │
-                    │                                       │
-BM25: [D1:0.9, D2:0.7, D3:0.6]                             │
-         │      │      │                                   │
-         ├──────┼──────┼───────►  Weighted Sum             │
-         │      │      │               │                   │
-Vector: [D1:0.8, D4:0.7, D2:0.6]       ▼                   │
-                                 [D1:0.82, D2:0.62,        │
-                                  D4:0.56, D3:0.12]        │
-                    └──────────────────────────────────────┘
-```
-
----
-
-## Reranking Layer
-
-**File:** `src/models/reranker.py`
-
-### Class: Reranker
-
-```python
-class Reranker:
-    def __init__(self, config: dict):
-        self.model_name = "BAAI/bge-reranker-v2-m3"
-        self.device = self._get_best_device()  # mps/cuda/cpu
-        self.model = AutoModelForSequenceClassification.from_pretrained(...)
-        
-    def rerank(self, query: str, documents: List[Document], top_k: int) -> List[RerankResult]:
-        """Rerank documents using neural scoring"""
-```
-
-#### Reranking Process
-
-```
-Input: 100 candidate documents from hybrid retrieval
-
-STEP 1: Create query-document pairs
-┌─────────────────────────────────────────────────────────────────┐
-│ Pairs:                                                          │
-│   [Query, Doc1]                                                 │
-│   [Query, Doc2]                                                 │
-│   ...                                                           │
-│   [Query, Doc100]                                               │
-└─────────────────────────────────────────────────────────────────┘
-
-STEP 2: Tokenize and batch
-┌─────────────────────────────────────────────────────────────────┐
-│ Input: "[CLS] Query text [SEP] Document text [SEP]"             │
-│ Max length: 512 tokens                                          │
-│ Batch size: 8                                                   │
-└─────────────────────────────────────────────────────────────────┘
-
-STEP 3: Pass through transformer
-┌─────────────────────────────────────────────────────────────────┐
-│              bge-reranker-v2-m3 Model                           │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │  Embedding Layer                                          │  │
-│  │       ↓                                                   │  │
-│  │  12 Transformer Layers (768 hidden dim)                   │  │
-│  │       ↓                                                   │  │
-│  │  Classification Head                                      │  │
-│  │       ↓                                                   │  │
-│  │  Relevance Score (single float)                           │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-
-STEP 4: Sort by score, return top-2
-Output: [RerankResult(doc1, score=0.95), RerankResult(doc7, score=0.89)]
-```
-
----
-
-## Response Generation Layer
-
-**File:** `src/response/response_generator.py`
-
-### Class: ResponseGenerator
-
-```python
-class ResponseGenerator:
-    def __init__(self, config: dict):
-        # Get LLM URL (env var for Docker, config for local)
-        llm_url = os.environ.get("LLAMAFILE_SERVER_URL", 
-                                  config["retrieval"]["llamafile_server_base_url"])
-        self.llm = Llamafile(base_url=llm_url, seed=2024)
-        
-    def generate_answer(self, query: str, chunks: List[Document]) -> Dict:
-        """Generate answer using LLM with retrieved context"""
-```
-
-#### Response Generation Flow
-
-```
-STEP 1: Prepare context from reranked chunks
-┌─────────────────────────────────────────────────────────────────┐
-│ Context:                                                         │
-│ [1] Source: data/raw/document.pdf                               │
-│ The Matter protocol enables secure communication...              │
-│                                                                  │
-│ [2] Source: data/raw/notes.txt                                  │
-│ DAC certificates contain subject key identifiers...             │
-└─────────────────────────────────────────────────────────────────┘
-
-STEP 2: Format prompt
-┌─────────────────────────────────────────────────────────────────┐
-│ You are an efficient Q&A assistant...                           │
-│                                                                  │
-│ Question: {user_query}                                          │
-│                                                                  │
-│ Relevant Information:                                            │
-│ {context}                                                        │
-│                                                                  │
-│ Please provide a response that:                                  │
-│ 1. Directly addresses the question                              │
-│ 2. Is supported by the provided information                     │
-│ ...                                                              │
-└─────────────────────────────────────────────────────────────────┘
-
-STEP 3: Send to llamafile server
-┌─────────────────────────────────────────────────────────────────┐
-│ POST http://localhost:8081/completion                           │
-│ {                                                                │
-│   "prompt": "<formatted prompt>",                               │
-│   "n_predict": 512,                                             │
-│   "temperature": 0.7                                            │
-│ }                                                                │
-└─────────────────────────────────────────────────────────────────┘
-
-STEP 4: Return structured response
+**Response:**
+```json
 {
-    "response": "The Subject Key Identifier in Matter DAC...",
-    "source_documents": [{"source": "document.pdf"}, ...],
-    "metadata": {}
+  "status": "healthy",
+  "documents_indexed": 248,
+  "timestamp": "2026-01-07T15:00:00"
+}
+```
+
+**Implementation:**
+```python
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Check system health and document count."""
+    return HealthResponse(
+        status="healthy" if rag_components else "initializing",
+        documents_indexed=len(rag_components.original_chunks) if rag_components else 0,
+        timestamp=datetime.now().isoformat()
+    )
+```
+
+---
+
+### Upload Document
+
+```
+POST /upload
+Content-Type: multipart/form-data
+```
+
+**Request:**
+```
+file: <binary file data>
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "File 'document.pdf' uploaded successfully",
+  "filename": "document.pdf",
+  "path": "data/uploads/document.pdf",
+  "next_step": "Call POST /refresh to index the new document"
+}
+```
+
+**Implementation:**
+```python
+@app.post("/upload", response_model=UploadResponse)
+async def upload_document(file: UploadFile = File(...)):
+    """Upload a document for indexing."""
+    
+    # Validate file type
+    allowed_extensions = {'.pdf', '.docx', '.txt', '.doc', '.md'}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {allowed_extensions}"
+        )
+    
+    # Validate file size (max 10MB)
+    MAX_SIZE = 10 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(
+            status_code=400,
+            detail="File too large. Maximum size is 10MB"
+        )
+    
+    # Save file
+    upload_path = os.path.join("data/uploads", file.filename)
+    os.makedirs("data/uploads", exist_ok=True)
+    
+    with open(upload_path, "wb") as buffer:
+        buffer.write(content)
+    
+    return UploadResponse(
+        status="success",
+        message=f"File '{file.filename}' uploaded successfully",
+        filename=file.filename,
+        path=upload_path,
+        next_step="Call POST /refresh to index the new document"
+    )
+```
+
+---
+
+### Refresh Indices
+
+```
+POST /refresh
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Indices refreshed successfully",
+  "documents_indexed": 312
+}
+```
+
+**Implementation:**
+```python
+@app.post("/refresh", response_model=RefreshResponse)
+async def refresh_indices():
+    """Rebuild document indices with new/updated files."""
+    global rag_components
+    
+    try:
+        # Reinitialize with fresh data
+        initializer = RAGInitializer(
+            "config/init_config.yaml",
+            "config/process_config.yaml"
+        )
+        rag_components = initializer.initialize()
+        rag_components.retriever.initialize(rag_components.original_chunks)
+        
+        return RefreshResponse(
+            status="success",
+            message="Indices refreshed successfully",
+            documents_indexed=len(rag_components.original_chunks)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+---
+
+### Query Documents
+
+```
+POST /query
+Content-Type: application/json
+```
+
+**Request:**
+```json
+{
+  "query": "What is the authentication process?",
+  "top_k": 3
+}
+```
+
+**Response:**
+```json
+{
+  "query": "What is the authentication process?",
+  "answer": "The authentication process involves...",
+  "sources": ["auth_guide.pdf", "security_doc.md"],
+  "timestamp": "2026-01-07T15:05:00"
+}
+```
+
+**Implementation:**
+```python
+@app.post("/query", response_model=QueryResponse)
+async def query(request: QueryRequest):
+    """Ask a question and get an answer from your documents."""
+    
+    if rag_components is None:
+        raise HTTPException(status_code=503, detail="RAG system not initialized")
+    
+    try:
+        # Step 1: Retrieve documents (hybrid search)
+        retrieved_results = rag_components.retriever.retrieve_with_method(
+            request.query,
+            method="hybrid",
+            top_k=rag_components.process_config['retrieval']['top_k']
+        )
+        
+        # Step 2: Rerank if configured
+        if rag_components.process_config['retrieval']['use_reranking']:
+            reranked_results = rag_components.reranker.rerank(
+                request.query,
+                [r.document for r in retrieved_results],
+                top_k=request.top_k
+            )
+            relevant_docs = [r.document for r in reranked_results]
+        else:
+            relevant_docs = [r.document for r in retrieved_results[:request.top_k]]
+        
+        # Step 3: Generate response
+        response_data = rag_components.response_generator.generate_answer(
+            request.query,
+            relevant_docs,
+            metadata={}
+        )
+        
+        # Step 4: Extract sources
+        sources = [doc.metadata.get('source', 'unknown') for doc in relevant_docs]
+        
+        return QueryResponse(
+            query=request.query,
+            answer=response_data['response'],
+            sources=list(set(sources)),
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Query error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+---
+
+### List Documents
+
+```
+GET /documents
+```
+
+**Response:**
+```json
+{
+  "documents": [
+    "data/raw/document1.pdf",
+    "data/uploads/document2.txt"
+  ],
+  "count": 2,
+  "total_chunks": 248,
+  "documents_info": [
+    {
+      "filename": "document1.pdf",
+      "size_mb": 2.5,
+      "chunks": 120
+    }
+  ]
 }
 ```
 
 ---
 
-## Caching System
+### Delete Document
 
-**File:** `src/cache/cache.py`
-
-### Class: CacheManager
-
-```python
-class CacheManager:
-    def __init__(self, cache_dir: str):
-        self.cache_dir = cache_dir
-        
-    def get(self, key: str) -> Optional[Any]:
-        """Retrieve cached item by key"""
-        
-    def set(self, key: str, value: Any) -> None:
-        """Store item in cache"""
+```
+DELETE /documents/{filename}
 ```
 
-### What Gets Cached
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Document 'document.pdf' deleted. Call POST /refresh to update indices."
+}
+```
 
-| Item | Key Format | Purpose |
-|------|------------|---------|
-| BM25 Index | `bm25_{hash}.pkl` | Avoid recomputing tokenization |
-| Embeddings | `embeddings_{hash}.pkl` | Avoid re-embedding documents |
-| Chunks | `chunks_{hash}.pkl` | Avoid re-chunking documents |
+---
 
-### Cache Key Generation
+### Clear All Data
+
+```
+POST /clear
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "All documents and cache cleared. System reset."
+}
+```
+
+⚠️ **Warning:** This is a destructive operation that cannot be undone.
+
+---
+
+### Get System Limits
+
+```
+GET /limits
+```
+
+**Response:**
+```json
+{
+  "max_file_size_mb": 10,
+  "max_total_documents": 100,
+  "supported_formats": [".pdf", ".docx", ".txt", ".doc", ".md"]
+}
+```
+
+---
+
+## Data Models
+
+### Request Models
 
 ```python
-def generate_cache_key(content: str) -> str:
-    """Generate deterministic cache key from content"""
-    # Uses first 100 chars of concatenated text
-    # MD5 hash for unique identifier
-    return hashlib.md5(content[:100].encode()).hexdigest()
+# api_server.py - Pydantic models
+
+class QueryRequest(BaseModel):
+    """Request model for query endpoint."""
+    query: str = Field(..., min_length=1, description="Question to ask")
+    top_k: int = Field(default=3, ge=1, le=10, description="Number of results")
+
+class UploadRequest(BaseModel):
+    """Handled via UploadFile, not a Pydantic model."""
+    pass
+```
+
+### Response Models
+
+```python
+class HealthResponse(BaseModel):
+    """Response model for health check."""
+    status: str
+    documents_indexed: int
+    timestamp: str
+
+class UploadResponse(BaseModel):
+    """Response model for file upload."""
+    status: str
+    message: str
+    filename: str
+    path: str
+    next_step: str
+
+class RefreshResponse(BaseModel):
+    """Response model for index refresh."""
+    status: str
+    message: str
+    documents_indexed: int
+
+class QueryResponse(BaseModel):
+    """Response model for queries."""
+    query: str
+    answer: str
+    sources: List[str]
+    timestamp: str
+
+class DocumentsResponse(BaseModel):
+    """Response model for document listing."""
+    documents: List[str]
+    count: int
+    total_chunks: int
+    documents_info: List[dict]
 ```
 
 ---
 
 ## Error Handling
 
-All components implement try-catch with logging:
+### HTTP Status Codes
 
-```python
-try:
-    result = self.some_operation()
-except Exception as e:
-    self.logger.error(f"Error in operation: {str(e)}")
-    raise  # Or return graceful fallback
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| 200 | Success | Successful operation |
+| 400 | Bad Request | Invalid input (file type, size) |
+| 404 | Not Found | Document doesn't exist |
+| 500 | Server Error | Internal processing error |
+| 503 | Service Unavailable | RAG not initialized |
+
+### Error Response Format
+
+```json
+{
+  "detail": "Error message describing what went wrong"
+}
 ```
 
-### Logging Levels
+### Exception Handling Pattern
 
-| Level | Usage |
-|-------|-------|
-| `INFO` | Normal operations (initialization, retrieval counts) |
-| `WARNING` | Non-critical issues (fallback to CPU, missing optional files) |
-| `ERROR` | Critical failures (model load failure, LLM connection error) |
+```python
+@app.post("/endpoint")
+async def endpoint():
+    try:
+        # Operation
+        result = do_something()
+        return {"status": "success", "data": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+```
 
 ---
 
-## Next: Frontend →
+## Configuration
 
-See [03_FRONTEND.md](./03_FRONTEND.md) for Streamlit UI details.
+### init_config.yaml
+
+```yaml
+# Logging
+logging:
+  level: "INFO"
+  show_progress: true
+  file_logging: true
+
+# Models
+model:
+  embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"
+  rerank_model: "BAAI/bge-reranker-v2-m3"
+  device_rerank: "mps"  # or "cuda", "cpu"
+
+# Processing
+processing:
+  chunk_size: 2000
+  chunk_overlap: 200
+  batch_size_embeddings: 32
+  batch_size_reranking: 8
+
+# Paths
+paths:
+  cache_dir: "./cache"
+  data_dir: "./data"
+  log_dir: "./logs"
+```
+
+### process_config.yaml
+
+```yaml
+retrieval:
+  llamafile_server_base_url: "http://localhost:8081"
+  send_nb_chunks_to_llm: 2
+  use_bm25: true
+  bm25_weight: 0.2
+  top_k: 100
+  use_reranking: true
+  use_query_expansion: false
+```
 
 ---
 
-*Author: Arnav Angarkar*
+## Development Guide
+
+### Adding a New Endpoint
+
+```python
+# 1. Define the response model
+class NewResponse(BaseModel):
+    field: str
+    value: int
+
+# 2. Create the endpoint
+@app.get("/new-endpoint", response_model=NewResponse)
+async def new_endpoint(param: str = Query(...)):
+    """Description of what this endpoint does."""
+    
+    # Validate RAG is ready
+    if rag_components is None:
+        raise HTTPException(status_code=503, detail="RAG not initialized")
+    
+    # Perform operation
+    result = do_operation(param)
+    
+    return NewResponse(field=result.field, value=result.value)
+```
+
+### Testing Endpoints
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Upload document
+curl -X POST http://localhost:8000/upload \
+  -F "file=@document.pdf"
+
+# Query
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is authentication?", "top_k": 3}'
+
+# List documents
+curl http://localhost:8000/documents
+```
+
+### Swagger Documentation
+
+Access interactive API docs at:
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
+
+---
+
+## Next Steps
+
+- **[Frontend Documentation](./03_FRONTEND.md)** - React UI
+- **[RAG Pipeline](./05_RAG_PIPELINE.md)** - Retrieval details
+- **[Incremental Learning](./INCREMENTAL_LEARNING.md)** - Live updates
+
+---
+
+*Last updated: January 2026*
