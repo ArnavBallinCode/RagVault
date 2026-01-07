@@ -1,0 +1,179 @@
+🚀 Starting Secure Offline RAG System...
+
+📦 Activating conda environment...
+
+📝 Starting LLM server in background...
+   (This uses Metal/MPS acceleration on Apple Silicon)
+   LLM Server PID: 79668
+
+⏳ Waiting for LLM server to start...
+Apple Metal GPU support successfully loaded
+{"build":1500,"commit":"a30b324","function":"server_cli","level":"INFO","line":2841,"msg":"build info","tid":"34405054888","timestamp":1767722998}
+{"function":"server_cli","level":"INFO","line":2844,"msg":"system info","n_threads":4,"n_threads_batch":-1,"system_info":"AVX = 0 | AVX_VNNI = 0 | AVX2 = 0 | AVX512 = 0 | AVX512_VBMI = 0 | AVX512_VNNI = 0 | AVX512_BF16 = 0 | FMA = 0 | NEON = 1 | SVE = 0 | ARM_FMA = 1 | F16C = 0 | FP16_VA = 0 | WASM_SIMD = 0 | BLAS = 0 | SSE3 = 0 | SSSE3 = 0 | VSX = 0 | MATMUL_INT8 = 0 | LLAMAFILE = 1 | ","tid":"34405054888","timestamp":1767722998,"total_threads":10}
+llama_model_loader: loaded meta data with 31 key-value pairs and 363 tensors from Mistral-Nemo-Instruct-2407.Q5_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = llama
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                         general.size_label str              = 12B
+llama_model_loader: - kv   3:                            general.license str              = apache-2.0
+llama_model_loader: - kv   4:                          general.languages arr[str,9]       = ["en", "fr", "de", "es", "it", "pt", ...
+llama_model_loader: - kv   5:                          llama.block_count u32              = 40
+llama_model_loader: - kv   6:                       llama.context_length u32              = 1024000
+llama_model_loader: - kv   7:                     llama.embedding_length u32              = 5120
+llama_model_loader: - kv   8:                  llama.feed_forward_length u32              = 14336
+llama_model_loader: - kv   9:                 llama.attention.head_count u32              = 32
+llama_model_loader: - kv  10:              llama.attention.head_count_kv u32              = 8
+llama_model_loader: - kv  11:                       llama.rope.freq_base f32              = 1000000.000000
+llama_model_loader: - kv  12:     llama.attention.layer_norm_rms_epsilon f32              = 0.000010
+llama_model_loader: - kv  13:                 llama.attention.key_length u32              = 128
+llama_model_loader: - kv  14:               llama.attention.value_length u32              = 128
+llama_model_loader: - kv  15:                          general.file_type u32              = 17
+llama_model_loader: - kv  16:                           llama.vocab_size u32              = 131072
+llama_model_loader: - kv  17:                 llama.rope.dimension_count u32              = 128
+llama_model_loader: - kv  18:            tokenizer.ggml.add_space_prefix bool             = false
+llama_model_loader: - kv  19:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  20:                         tokenizer.ggml.pre str              = tekken
+llama_model_loader: - kv  21:                      tokenizer.ggml.tokens arr[str,131072]  = ["<unk>", "<s>", "</s>", "[INST]", "[...
+llama_model_loader: - kv  22:                  tokenizer.ggml.token_type arr[i32,131072]  = [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, ...
+llama_model_loader: - kv  23:                      tokenizer.ggml.merges arr[str,269443]  = ["Ġ Ġ", "Ġ t", "e r", "i n", "Ġ �...
+llama_model_loader: - kv  24:                tokenizer.ggml.bos_token_id u32              = 1
+llama_model_loader: - kv  25:                tokenizer.ggml.eos_token_id u32              = 2
+llama_model_loader: - kv  26:            tokenizer.ggml.unknown_token_id u32              = 0
+llama_model_loader: - kv  27:               tokenizer.ggml.add_bos_token bool             = true
+llama_model_loader: - kv  28:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  29:                    tokenizer.chat_template str              = {%- if messages[0]["role"] == "system...
+llama_model_loader: - kv  30:               general.quantization_version u32              = 2
+llama_model_loader: - type  f32:   81 tensors
+llama_model_loader: - type q5_K:  241 tensors
+llama_model_loader: - type q6_K:   41 tensors
+llm_load_vocab: special tokens cache size = 1000
+llm_load_vocab: token to piece cache size = 0.8498 MB
+llm_load_print_meta: format           = GGUF V3 (latest)
+llm_load_print_meta: arch             = llama
+llm_load_print_meta: vocab type       = BPE
+llm_load_print_meta: n_vocab          = 131072
+llm_load_print_meta: n_merges         = 269443
+llm_load_print_meta: vocab_only       = 0
+llm_load_print_meta: n_ctx_train      = 1024000
+llm_load_print_meta: n_embd           = 5120
+llm_load_print_meta: n_layer          = 40
+llm_load_print_meta: n_head           = 32
+llm_load_print_meta: n_head_kv        = 8
+llm_load_print_meta: n_rot            = 128
+llm_load_print_meta: n_swa            = 0
+llm_load_print_meta: n_embd_head_k    = 128
+llm_load_print_meta: n_embd_head_v    = 128
+llm_load_print_meta: n_gqa            = 4
+llm_load_print_meta: n_embd_k_gqa     = 1024
+llm_load_print_meta: n_embd_v_gqa     = 1024
+llm_load_print_meta: f_norm_eps       = 0.0e+00
+llm_load_print_meta: f_norm_rms_eps   = 1.0e-05
+llm_load_print_meta: f_clamp_kqv      = 0.0e+00
+llm_load_print_meta: f_max_alibi_bias = 0.0e+00
+llm_load_print_meta: f_logit_scale    = 0.0e+00
+llm_load_print_meta: n_ff             = 14336
+llm_load_print_meta: n_expert         = 0
+llm_load_print_meta: n_expert_used    = 0
+llm_load_print_meta: causal attn      = 1
+llm_load_print_meta: pooling type     = 0
+llm_load_print_meta: rope type        = 0
+llm_load_print_meta: rope scaling     = linear
+llm_load_print_meta: freq_base_train  = 1000000.0
+llm_load_print_meta: freq_scale_train = 1
+llm_load_print_meta: n_ctx_orig_yarn  = 1024000
+llm_load_print_meta: rope_finetuned   = unknown
+llm_load_print_meta: ssm_d_conv       = 0
+llm_load_print_meta: ssm_d_inner      = 0
+llm_load_print_meta: ssm_d_state      = 0
+llm_load_print_meta: ssm_dt_rank      = 0
+llm_load_print_meta: model type       = 13B
+llm_load_print_meta: model ftype      = Q5_K - Medium
+llm_load_print_meta: model params     = 12.25 B
+llm_load_print_meta: model size       = 8.12 GiB (5.70 BPW) 
+llm_load_print_meta: general.name     = n/a
+llm_load_print_meta: BOS token        = 1 '<s>'
+llm_load_print_meta: EOS token        = 2 '</s>'
+llm_load_print_meta: UNK token        = 0 '<unk>'
+llm_load_print_meta: LF token         = 1196 'Ä'
+llm_load_print_meta: max token length = 150
+llm_load_tensors: ggml ctx size =    0.40 MiB
+ggml_backend_metal_log_allocated_size: allocated buffer, size =  7875.80 MiB, ( 7875.88 / 10922.67)
+llm_load_tensors: offloading 40 repeating layers to GPU
+llm_load_tensors: offloaded 40/41 layers to GPU
+llm_load_tensors:      Metal buffer size =  7875.79 MiB
+llm_load_tensors:        CPU buffer size =  8315.80 MiB
+..........................................................................................
+llama_new_context_with_model: n_ctx      = 8192
+llama_new_context_with_model: n_batch    = 2048
+llama_new_context_with_model: n_ubatch   = 512
+llama_new_context_with_model: flash_attn = 0
+llama_new_context_with_model: freq_base  = 1000000.0
+llama_new_context_with_model: freq_scale = 1
+ggml_metal_init: allocating
+ggml_metal_init: found device: Apple M4
+ggml_metal_init: picking default device: Apple M4
+ggml_metal_init: default.metallib not found, loading from source
+ggml_metal_init: GGML_METAL_PATH_RESOURCES = nil
+ggml_metal_init: loading '/Users/rayyanshaikh/.llamafile/v/0.8.13/ggml-metal.metal'
+ggml_metal_init: GPU name:   Apple M4
+ggml_metal_init: GPU family: MTLGPUFamilyApple9  (1009)
+ggml_metal_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_init: GPU family: MTLGPUFamilyMetal3  (5001)
+ggml_metal_init: simdgroup reduction support   = true
+ggml_metal_init: simdgroup matrix mul. support = true
+ggml_metal_init: hasUnifiedMemory              = true
+ggml_metal_init: recommendedMaxWorkingSetSize  = 11453.25 MB
+llama_kv_cache_init:      Metal KV buffer size =  1280.00 MiB
+llama_new_context_with_model: KV self size  = 1280.00 MiB, K (f16):  640.00 MiB, V (f16):  640.00 MiB
+llama_new_context_with_model:        CPU  output buffer size =     0.50 MiB
+llama_new_context_with_model:      Metal compute buffer size =   564.00 MiB
+llama_new_context_with_model:        CPU compute buffer size =   256.00 MiB
+llama_new_context_with_model: graph nodes  = 1286
+llama_new_context_with_model: graph splits = 3
+{"function":"initialize","level":"INFO","line":491,"msg":"initializing slots","n_slots":1,"tid":"34405054888","timestamp":1767723003}
+{"function":"initialize","level":"INFO","line":500,"msg":"new slot","n_ctx_slot":8192,"slot_id":0,"tid":"34405054888","timestamp":1767723003}
+{"function":"server_cli","level":"INFO","line":3062,"msg":"model loaded","tid":"34405054888","timestamp":1767723003}
+
+llama server listening at http://127.0.0.1:8081
+
+{"function":"server_cli","hostname":"127.0.0.1","level":"INFO","line":3185,"msg":"HTTP server listening","port":"8081","tid":"34405054888","timestamp":1767723003}
+{"function":"validate_model_chat_template","level":"ERR","line":480,"msg":"The chat template comes with this model is not yet supported, falling back to chatml. This may cause the model to output suboptimal responses","tid":"34405054888","timestamp":1767723003}
+{"function":"update_slots","level":"INFO","line":1661,"msg":"all slots are idle and system prompt is empty, clear the KV cache","tid":"34405054888","timestamp":1767723003}
+{"function":"process_single_task","level":"INFO","line":1589,"msg":"slot data","n_idle_slots":1,"n_processing_slots":0,"task_id":0,"tid":"34405054888","timestamp":1767723008}
+{"function":"log_server_request","level":"INFO","line":2766,"method":"GET","msg":"request","params":{},"path":"/health","remote_addr":"127.0.0.1","remote_port":49189,"status":200,"tid":"4344003232","timestamp":1767723008}
+✅ LLM server is running!
+
+🎯 Starting Streamlit web interface...
+   Access the RAG system at: http://localhost:8501
+
+   Press Ctrl+C to stop all services
+
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://10.0.1.240:8501
+
+  For better performance, install the Watchdog module:
+
+  $ xcode-select --install
+  $ pip install watchdog
+            
+2026-01-06 23:40:36,170 - INFO - Initializing components...
+2026-01-06 23:40:36,170 - INFO - CacheManager initialized with cache_dir: ./cache
+2026-01-06 23:40:36,173 - INFO - CacheManager initialized with cache_dir: ./cache
+2026-01-06 23:40:36,173 - INFO - CacheManager initialized with cache_dir: ./cache
+2026-01-06 23:40:36,173 - INFO - CacheManager initialized with cache_dir: ./cache
+2026-01-06 23:40:36,174 - INFO - Using Apple Metal (MPS) for embeddings
+2026-01-06 23:40:36,174 - INFO - Load pretrained SentenceTransformer: nomic-ai/nomic-embed-text-v1.5
+2026-01-06 23:40:41,470 - WARNING - <All keys matched successfully>
+2026-01-06 23:40:46,916 - INFO - Initialized reranker model: BAAI/bge-reranker-v2-m3
+2026-01-06 23:40:46,917 - INFO - Loading and preprocessing data...
+2026-01-06 23:40:46,917 - INFO - Loading CSV data...
+2026-01-06 23:40:46,926 - INFO - Loaded 1 training samples and 1 test samples
+2026-01-06 23:40:46,926 - ERROR - Error in RAG initialization: name 'os' is not defined
+./start.sh: line 68: 79668 Killed: 9               ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+./start.sh: line 68: 79763 Killed: 9               streamlit run streamlit_app.py --server.port 8501
+
+🛑 Shutting down...
+✅ Cleanup complete

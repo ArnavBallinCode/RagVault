@@ -1,0 +1,11 @@
+RagVault is a Secure Offline RAG System designed for privacy and performance.
+It runs entirely on your local machine using llamafile and local embeddings.
+Key features include:
+- Offline execution
+- Secure document processing
+- Support for multiple file formats (PDF, DOCX, etc.)
+- Streamlit web interface
+- REST API for integration
+
+The system uses Mistral-Nemo-Instruct-2407 as the LLM and nomic-embed-text-v1.5 for embeddings.
+It includes a reranking step using BAAI/bge-reranker-v2-m3 to improve retrieval relevance.

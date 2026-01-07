@@ -2,6 +2,7 @@ from typing import  List, Optional, Tuple, Union
 from pathlib import Path
 import pandas as pd
 import logging
+import os
 from urllib.parse import urlparse
 from tqdm import tqdm
 from langchain_core.documents import Document
@@ -60,9 +61,24 @@ class DataIngestion:
             List[str]: List of document paths to process
             
         Note:
-            Logs the number of documents found for processing
+            Logs the number of documents found for processing.
+            Automatically scans data/uploads/ for supported files.
         """
         doc_paths = self.config['files']['document_paths']
+        
+        # Auto-scan data/uploads/ directory for all supported files
+        uploads_dir = "data/uploads"
+        if os.path.exists(uploads_dir):
+            supported_extensions = ['.pdf', '.docx', '.txt', '.doc', '.md']
+            for filename in os.listdir(uploads_dir):
+                file_path = os.path.join(uploads_dir, filename)
+                if os.path.isfile(file_path):
+                    _, ext = os.path.splitext(filename)
+                    if ext.lower() in supported_extensions:
+                        if file_path not in doc_paths:
+                            doc_paths.append(file_path)
+                            self.logger.info(f"Auto-detected document: {file_path}")
+        
         self.logger.info(f"Found {len(doc_paths)} documents for processing")
         return doc_paths
     
@@ -95,6 +111,7 @@ class DataIngestion:
                 all_documents[source_str] = cached_content
                 continue
             
+            docs = None
             try:
                 if isinstance(source, (str, Path)) and Path(source_str).exists():
                     docs = self._process_local_file(source)

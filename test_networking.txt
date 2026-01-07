@@ -1,0 +1,18 @@
+Computer Networking Test Document
+
+This document contains information about network protocols.
+
+## Stop-and-Wait Protocol
+The Stop-and-Wait protocol is a simple ARQ (Automatic Repeat Request) protocol used for reliable data transmission. In this protocol:
+- The sender transmits one frame and waits for acknowledgment
+- Once ACK is received, the next frame is sent
+- If timeout occurs, the frame is retransmitted
+- Simple but inefficient for high-delay links
+
+## TCP/IP Protocol Suite
+TCP/IP is the fundamental communication protocol for the Internet.
+It consists of four layers:
+1. Application Layer (HTTP, FTP, SMTP)
+2. Transport Layer (TCP, UDP)
+3. Internet Layer (IP, ICMP)
+4. Link Layer (Ethernet, WiFi)
