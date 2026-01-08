@@ -13,7 +13,8 @@
 5. [How Documents Become Searchable](#how-documents-become-searchable)
 6. [How Your Questions Get Answered](#how-your-questions-get-answered)
 7. [Configuration Parameters Explained](#configuration-parameters-explained)
-8. [Technology Choices and Why](#technology-choices-and-why)
+8. [Observability & Monitoring](#observability-monitoring)
+9. [Technology Choices and Why](#technology-choices-and-why)
 
 ---
 
@@ -479,7 +480,41 @@ Before diving into how things work, let's understand the key terms you'll encoun
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+
+### Prometheus Metrics
+
+**What it is:** A standard system for measuring software performance in real-time.
+
+**Why it matters:**
+- Logging to files is slow and hard to analyze
+- Prometheus counts things in memory (microseconds)
+- Allows instant dashboards for "Error Rate" or "Average Speed"
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                      PROMETHEUS METRICS EXPLAINED                    │
+│                                                                      │
+│   TRADITIONAL LOGGING (Old Way)                                      │
+│   ─────────────────────────────                                      │
+│   Request 1: [20:00:01] /query took 0.5s → WRITE TO DISK (Slow)      │
+│   Request 2: [20:00:02] /query took 0.4s → WRITE TO DISK (Slow)      │
+│                                                                      │
+│   VS                                                                 │
+│                                                                      │
+│   PROMETHEUS METRICS (RagVault Way)                                  │
+│   ─────────────────────────────────                                  │
+│   Variable: queries_total = 2                                        │
+│   Variable: latency_sum = 0.9                                        │
+│                                                                      │
+│   (Just updates numbers in memory. No disk writing! ⚡)              │
+│                                                                      │
+│   RESULT:                                                            │
+│   We can track performance without slowing down your answers.        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ---
+
 
 ## System Architecture
 
@@ -863,6 +898,87 @@ Every setting in RagVault and what it does:
 
 ---
 
+## Observability & Monitoring
+
+RagVault isn't just a black box. It includes an "SRE-grade" observability stack based on **Prometheus** to track performance and a detailed history audit log.
+
+### Operational Metrics Architecture
+
+How we track latency, errors, and system health without slowing things down:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                   OBSERVABILITY ARCHITECTURE                         │
+│                                                                      │
+│    INSTRUMENTED BACKEND                                              │
+│    ┌───────────────────────────────────────────────────────────┐    │
+│    │  Metrics Collector (src/metrics.py)                        │    │
+│    │                                                           │    │
+│    │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │    │
+│    │  │  COUNTERS    │  │  HISTOGRAMS  │  │   GAUGES     │    │    │
+│    │  │  (Counts)    │  │  (Latencies) │  │  (State)     │    │    │
+│    │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘    │    │
+│    └─────────┼─────────────────┼─────────────────┼─────────────┘    │
+│              │                 │                 │                  │
+│              ▼                 ▼                 ▼                  │
+│    ┌───────────────────────────────────────────────────────────┐    │
+│    │                 IN-MEMORY REGISTRY                         │    │
+│    │             (prometheus-client library)                    │    │
+│    └──────────────────────┬────────────────────────────┬───────┘    │
+│                           │                            │            │
+│                 JSON      │                  Prometheus│            │
+│                 Aggregation                            Format    │            │
+│                           ▼                            ▼            │
+│                ┌─────────────────────┐      ┌────────────────────┐  │
+│                │     /stats API      │      │    /metrics API    │  │
+│                └──────────┬──────────┘      └──────────┬─────────┘  │
+│                           │                            │            │
+│                           ▼                            ▼            │
+│                ┌─────────────────────┐      ┌────────────────────┐  │
+│                │   ADMIN DASHBOARD   │      │ EXTERNAL MONITOR   │  │
+│                │  (React UI /metrics)│      │ (Prometheus/Grafana)│ │
+│                └─────────────────────┘      └────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Query History
+
+We maintain a secure audit log of all interactions for review:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                       QUERY HISTORY AUDIT                            │
+│                                                                      │
+│   USER QUERY                               ADMIN REVIEW              │
+│   ──────────                               ────────────              │
+│                                            GET /history              │
+│        │                                        ▲                    │
+│        ▼                                        │                    │
+│   ┌──────────────┐                         ┌──────────────┐         │
+│   │ /query API   │                         │ /history API │         │
+│   └──────┬───────┘                         └──────┬───────┘         │
+│          │                                        │                   │
+│          ▼                                        │                   │
+│   ┌──────────────────────────────────────────────────────────┐      │
+│   │                 QUERY HISTORY STORAGE                    │      │
+│   │               (data/query_history.json)                  │      │
+│   │                                                          │      │
+│   │  [                                                       │      │
+│   │    {                                                     │      │
+│   │      "time": "2023-10-25T14:30:00",                      │      │
+│   │      "user": "alice",                                    │      │
+│   │      "query": "What is the refund policy?",              │      │
+│   │      "answer": "Refunds are processed within...",        │      │
+│   │      "sources": ["policy.pdf"]                           │      │
+│   │    },                                                    │      │
+│   │    ...                                                   │      │
+│   │  ]                                                       │      │
+│   └──────────────────────────────────────────────────────────┘      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Technology Choices and Why
 
 ### Why These Specific Technologies?
@@ -932,37 +1048,5 @@ RagVault is a complete offline RAG system that:
 
 All of this happens **100% offline** on your own hardware.
 
----
 
-## 13. Observability: Metrics and History
-
-RagVault includes built-in observability features to track system performance and user interaction.
-
-### Operational Metrics
-
-The system tracks various performance indicators using the [metrics.py](cci:7://file:///Users/arnavangarkar/Desktop/Secure-Offline-RAG-System/metrics.py:0:0-0:0) module.
-
-#### What is Tracked?
-- **Query Counts**: Total queries processed, broken down by user role.
-- **Latency**: Average response time for the `/query` endpoint.
-- **Errors**: Counts of errors by type and endpoint.
-- **Component Health**: Status of the Retriever, Reranker, and LLM connection.
-
-#### How It Works
-1. **Collection**: Decorators and context managers (like `metrics.time_request`) wrap key functions to capture execution time and outcome.
-2. **Storage**: Metrics are aggregated in-memory and periodically persisted to `data/metrics.json`.
-3. **Visualization**: The Frontend "Metrics" page fetches this data via the `/stats` endpoint to display dashboards.
-
-### Query History
-
-For audit and review purposes, all user queries are logged.
-
-#### History Storage
-- **File**: [data/query_history.json](cci:7://file:///Users/arnavangarkar/Desktop/Secure-Offline-RAG-System/data/query_history.json:0:0-0:0)
-- **Format**: JSON array containing:
-  - Timestamp
-  - User and Role
-  - Query text
-  - Source documents used
-  - Response preview
 
