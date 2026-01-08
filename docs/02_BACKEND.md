@@ -95,6 +95,31 @@
 
 ## API Server
 
+### Starting the Backend
+
+**⚠️ The backend requires 3 separate terminals:**
+
+**Terminal 1: LLM Server**
+```bash
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+```
+
+**Terminal 2: API Backend**
+```bash
+conda activate ragvault
+python api_server.py
+# Server starts on http://0.0.0.0:8000
+```
+
+**Terminal 3: Frontend**
+```bash
+# Option A: React UI
+cd frontend && npm run dev
+
+# Option B: Streamlit UI
+streamlit run streamlit_app.py
+```
+
 ### Overview
 
 The API server (`api_server.py`) is the main entry point for the backend, providing a RESTful interface to the RAG system.

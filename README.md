@@ -247,10 +247,22 @@ chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
 # 6. Initialize the document cache
 python init_cache_data.py
 
-# 7. Start the LLM server (in a separate terminal)
+# 7. Start the system (requires 3 separate terminals)
+
+# Terminal 1: Start LLM server
 ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
 
-# 8. Launch the web interface (in another terminal)
+# Terminal 2: Start API backend
+conda activate ragvault
+python api_server.py
+
+# Terminal 3: Choose your frontend
+# Option A: React UI (recommended)
+cd frontend
+npm install  # first time only
+npm run dev
+
+# Option B: Streamlit UI (alternative)
 conda activate ragvault
 streamlit run streamlit_app.py
 ```
@@ -283,9 +295,24 @@ chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
 # Ensure CUDA 12.x is installed, then:
 # ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 12 --port 8081
 
-# 7. Initialize and run (same as macOS steps 6-8)
+# 7. Initialize and run (requires 3 separate terminals)
 python init_cache_data.py
-./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081 &
+
+# Terminal 1: Start LLM server
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# Terminal 2: Start API backend
+source venv/bin/activate
+python api_server.py
+
+# Terminal 3: Choose your frontend
+# Option A: React UI (recommended)
+cd frontend
+npm install  # first time only
+npm run dev
+
+# Option B: Streamlit UI (alternative)
+source venv/bin/activate
 streamlit run streamlit_app.py
 ```
 
@@ -318,10 +345,22 @@ pip install -r requirements_rag.txt
 # 7. Initialize the cache
 python init_cache_data.py
 
-# 8. Start LLM server (in Command Prompt)
+# 8. Start the system (requires 3 separate Command Prompts or PowerShell windows)
+
+# Terminal 1: Start LLM server
 .\models\Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser --port 8081
 
-# 9. Start web interface (in another Command Prompt)
+# Terminal 2: Start API backend
+conda activate ragvault
+python api_server.py
+
+# Terminal 3: Choose your frontend
+# Option A: React UI (recommended)
+cd frontend
+npm install  # first time only
+npm run dev
+
+# Option B: Streamlit UI (alternative)
 conda activate ragvault
 streamlit run streamlit_app.py
 ```
@@ -393,18 +432,25 @@ retrieval:
 
 ### Starting the System
 
-1. **Start the LLM server** (required for both UIs):
+**⚠️ IMPORTANT: RagVault requires 3 terminals running simultaneously**
+
+The system has 3 independent services:
+
+1. **Terminal 1 - LLM Server (Port 8081)**
    ```bash
    ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
    ```
 
-2. **Start the FastAPI backend** (required for React UI):
+2. **Terminal 2 - API Backend (Port 8000)**
    ```bash
+   conda activate ragvault  # or source venv/bin/activate
    python api_server.py
    ```
 
-3. **Choose your preferred interface:**
-
+3. **Terminal 3 - Frontend UI**
+   
+   Choose ONE:
+   
    **Option A: React UI (Recommended - Full Visual Experience)**
    ```bash
    cd frontend
@@ -415,6 +461,7 @@ retrieval:
 
    **Option B: Streamlit UI (Memory-Efficient Alternative)**
    ```bash
+   conda activate ragvault
    streamlit run streamlit_app.py
    ```
    Open http://localhost:8501 in your browser
@@ -422,6 +469,29 @@ retrieval:
 > **💡 When to use each UI:**
 > - **React UI**: Best for visual pipeline interaction, modern developer experience, and full-featured interface
 > - **Streamlit UI**: Best for lower-resource machines, when Node.js isn't available, or when you need built-in user management (RBAC)
+
+### Quick Verification
+
+Check all services are running:
+```bash
+curl http://localhost:8081/health  # LLM server
+curl http://localhost:8000/health  # API backend
+curl http://localhost:5173         # React UI (or :8501 for Streamlit)
+```
+
+### Helper Scripts
+
+For convenience, we provide helper scripts (still require separate terminals):
+
+```bash
+# Terminal 1: LLM server (manual start required)
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# Terminal 2: API + Frontend together
+./start_all.sh
+```
+
+See [START_GUIDE.md](START_GUIDE.md) for detailed startup instructions.
 
 ### Default User Accounts
 

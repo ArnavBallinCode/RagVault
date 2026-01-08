@@ -47,10 +47,11 @@ RagVault is a **fully offline, privacy-focused Retrieval-Augmented Generation (R
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           RAGVAULT ARCHITECTURE                              │
+│                      (3 Services - 3 Terminals Required)                     │
 └─────────────────────────────────────────────────────────────────────────────┘
 
                           ┌─────────────────────────┐
-                          │      USER INTERFACE     │
+                          │      USER INTERFACE     │  Terminal 3
                           │  ┌─────────────────────┐│
                           │  │     React + Vite    ││
                           │  │   (Port 5173)       ││
@@ -60,7 +61,7 @@ RagVault is a **fully offline, privacy-focused Retrieval-Augmented Generation (R
                                         │
                                         ▼
                           ┌─────────────────────────┐
-                          │     FastAPI Backend     │
+                          │     FastAPI Backend     │  Terminal 2
                           │      (Port 8000)        │
                           └───────────┬─────────────┘
                                       │
@@ -68,15 +69,15 @@ RagVault is a **fully offline, privacy-focused Retrieval-Augmented Generation (R
               │                       │                       │
               ▼                       ▼                       ▼
     ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-    │    RETRIEVAL    │     │   GENERATION    │     │     MODELS      │
+    │    RETRIEVAL    │     │   GENERATION    │  T1 │     MODELS      │
     │  ┌───────────┐  │     │  ┌───────────┐  │     │  ┌───────────┐  │
     │  │   FAISS   │  │     │  │ Llamafile │  │     │  │   Nomic   │  │
     │  │  Vector   │  │     │  │   LLM     │  │     │  │  Embed    │  │
     │  │   Store   │  │     │  │ (8081)    │  │     │  │   v1.5    │  │
     │  └───────────┘  │     │  └───────────┘  │     │  └───────────┘  │
     │  ┌───────────┐  │     └─────────────────┘     │  ┌───────────┐  │
-    │  │   BM25    │  │                             │  │    BGE    │  │
-    │  │   Index   │  │                             │  │  Reranker │  │
+    │  │   BM25    │  │       Terminal 1            │  │    BGE    │  │
+    │  │   Index   │  │       (LLM Server)          │  │  Reranker │  │
     │  └───────────┘  │                             │  └───────────┘  │
     └─────────────────┘                             └─────────────────┘
               │

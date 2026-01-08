@@ -174,19 +174,31 @@ chmod +x models/*.llamafile
 # 3. Initialize document cache
 python init_cache_data.py
 
-# 4. Start all services
-./start.sh
+# 4. Start all services (requires 3 separate terminals)
+# Terminal 1: LLM server
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# Terminal 2: API backend
+conda activate ragvault
+python api_server.py
+
+# Terminal 3: Frontend (choose one)
+cd frontend && npm install && npm run dev  # React UI
+# OR
+streamlit run streamlit_app.py  # Streamlit UI
 ```
 
 ### Service URLs
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| React Frontend | http://localhost:5173 | Modern visual pipeline UI (primary) |
-| Streamlit UI | http://localhost:8501 | Memory-efficient UI with RBAC |
-| FastAPI Backend | http://localhost:8000 | REST API |
-| API Documentation | http://localhost:8000/docs | Swagger UI |
-| LLM Server | http://localhost:8081 | Model inference |
+All 3 services must be running:
+
+| Service | URL | Terminal | Purpose |
+|---------|-----|----------|----------|
+| LLM Server | http://localhost:8081 | 1 | Model inference |
+| API Backend | http://localhost:8000 | 2 | REST API |
+| React Frontend | http://localhost:5173 | 3 | Visual pipeline UI (primary) |
+| Streamlit UI | http://localhost:8501 | 3 | Memory-efficient UI (alternative) |
+| API Documentation | http://localhost:8000/docs | - | Swagger UI |
 
 ---
 

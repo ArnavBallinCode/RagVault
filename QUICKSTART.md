@@ -29,25 +29,102 @@ This will:
 
 ### 2. Start the System
 
-**Option A: Using the startup script (recommended)**
-```bash
-./start.sh
-```
-This starts both the LLM server and Streamlit web interface.
+**⚠️ IMPORTANT: This system requires 3 terminals running simultaneously**
 
-**Option B: Manual startup**
+The RagVault system consists of 3 separate services that must all be running:
+1. **LLM Server** (Mistral Nemo via Llamafile) - Port 8081
+2. **API Backend** (FastAPI) - Port 8000  
+3. **Frontend UI** (React/Vite OR Streamlit) - Port 5173 or 8501
+
+**Option A: Manual startup (RECOMMENDED - to understand the system)**
+
+**Terminal 1 - Start LLM Server:**
 ```bash
-# Terminal 1: Start LLM server
+# Make the model executable (only needed once)
 chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
+
+# Start the LLM server on port 8081
 ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
 
-# Terminal 2: Start Streamlit
+# Keep this terminal running - you'll see model loading and inference logs
+```
+
+**Terminal 2 - Start API Backend:**
+```bash
+# Activate the conda environment
 conda activate rag_project
+
+# Start the FastAPI server on port 8000
+python api_server.py
+
+# Keep this terminal running - you'll see API request logs
+```
+
+**Terminal 3 - Start Frontend UI:**
+
+Choose ONE of the following:
+
+*Option 3A: React UI (Modern visual pipeline)*
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies (first time only)
+npm install
+
+# Start the React development server on port 5173
+npm run dev
+
+# Keep this terminal running - you'll see Vite dev server logs
+```
+
+*Option 3B: Streamlit UI (Memory-efficient alternative)*
+```bash
+# Activate the conda environment
+conda activate rag_project
+
+# Start Streamlit on port 8501
 streamlit run streamlit_app.py
+
+# Keep this terminal running - you'll see Streamlit logs
+```
+
+**Option B: Using helper scripts**
+
+We provide scripts to help, but you still need separate terminals:
+
+```bash
+# Terminal 1: Start LLM
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# Terminal 2: Start API + Frontend together (if using start_all.sh)
+./start_all.sh
 ```
 
 ### 3. Access the Web Interface
-Open your browser to: **http://localhost:8501**
+
+Once all 3 services are running, open your browser:
+
+- **React UI**: http://localhost:5173 (recommended for full visual experience)
+- **Streamlit UI**: http://localhost:8501 (alternative, memory-efficient)
+- **API Documentation**: http://localhost:8000/docs (FastAPI Swagger UI)
+
+### 4. Verify All Services Are Running
+
+Check that all ports are active:
+```bash
+# Check LLM server
+curl http://localhost:8081/health
+
+# Check API backend
+curl http://localhost:8000/health
+
+# Check frontend (React)
+curl http://localhost:5173
+
+# OR check frontend (Streamlit)
+curl http://localhost:8501
+```
 
 ## Usage Options
 

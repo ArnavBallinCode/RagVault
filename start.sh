@@ -1,12 +1,24 @@
 #!/bin/bash
 # Startup script for Secure Offline RAG System on macOS
+# This is a LEGACY script that starts LLM + Streamlit only
+# 
+# RECOMMENDED: Use the 3-terminal manual approach instead:
+#   Terminal 1: ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+#   Terminal 2: python api_server.py
+#   Terminal 3: cd frontend && npm run dev
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "🚀 Starting Secure Offline RAG System..."
+echo "🚀 Starting Secure Offline RAG System (Streamlit Mode)..."
+echo ""
+echo "⚠️  NOTE: This script only starts LLM + Streamlit"
+echo "   For full functionality with React UI, you need to:"
+echo "   1. Start LLM server (Terminal 1)"
+echo "   2. Start API server (Terminal 2): python api_server.py"
+echo "   3. Start React UI (Terminal 3): cd frontend && npm run dev"
 echo ""
 
 # Activate conda environment

@@ -15,6 +15,157 @@ RagVault supports two deployment modes:
 
 ---
 
+## Manual Deployment
+
+### Production Startup (3 Terminals)
+
+For non-Docker production deployments, run these commands in separate terminals:
+
+**Terminal 1: LLM Server**
+```bash
+# Navigate to project
+cd /path/to/RagVault
+
+# Start LLM server with process manager (recommended)
+nohup ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile \
+  --server --nobrowser -ngl 999 --port 8081 \
+  > logs/llm_server.log 2>&1 &
+
+# Or use screen/tmux for persistent sessions
+screen -S llm
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+# Detach with Ctrl+A, D
+```
+
+**Terminal 2: API Backend**
+```bash
+# Activate environment
+conda activate ragvault
+
+# Start with process manager (recommended)
+nohup python api_server.py > logs/api_server.log 2>&1 &
+
+# Or use screen/tmux
+screen -S api
+python api_server.py
+# Detach with Ctrl+A, D
+```
+
+**Terminal 3: Frontend**
+```bash
+# For React UI (production build)
+cd frontend
+npm run build
+npx serve -s dist -p 5173
+
+# For Streamlit UI
+conda activate ragvault
+streamlit run streamlit_app.py --server.port 8501 --server.headless true
+```
+
+### Process Management with PM2
+
+For better process management, use PM2:
+
+```bash
+# Install PM2
+npm install -g pm2
+
+# Start all services
+pm2 start ecosystem.config.js
+
+# Monitor
+pm2 monit
+
+# View logs
+pm2 logs
+
+# Restart
+pm2 restart all
+
+# Stop
+pm2 stop all
+```
+
+**ecosystem.config.js:**
+```javascript
+module.exports = {
+  apps: [
+    {
+      name: 'llm-server',
+      script: './models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile',
+      args: '--server --nobrowser -ngl 999 --port 8081',
+      autorestart: true,
+      max_memory_restart: '10G'
+    },
+    {
+      name: 'api-server',
+      script: 'api_server.py',
+      interpreter: 'python',
+      autorestart: true,
+      max_memory_restart: '4G'
+    },
+    {
+      name: 'frontend',
+      script: 'streamlit',
+      args: 'run streamlit_app.py --server.port 8501 --server.headless true',
+      autorestart: true
+    }
+  ]
+};
+```
+
+### Using systemd (Linux)
+
+For Linux servers, use systemd services:
+
+**/etc/systemd/system/ragvault-llm.service:**
+```ini
+[Unit]
+Description=RagVault LLM Server
+After=network.target
+
+[Service]
+Type=simple
+User=ragvault
+WorkingDirectory=/opt/ragvault
+ExecStart=/opt/ragvault/models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**/etc/systemd/system/ragvault-api.service:**
+```ini
+[Unit]
+Description=RagVault API Server
+After=network.target ragvault-llm.service
+Requires=ragvault-llm.service
+
+[Service]
+Type=simple
+User=ragvault
+WorkingDirectory=/opt/ragvault
+Environment="PATH=/opt/conda/envs/ragvault/bin:/usr/bin"
+ExecStart=/opt/conda/envs/ragvault/bin/python api_server.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl enable ragvault-llm ragvault-api
+sudo systemctl start ragvault-llm ragvault-api
+sudo systemctl status ragvault-llm ragvault-api
+```
+
+---
+
 ## Docker Architecture
 
 ### Container Topology

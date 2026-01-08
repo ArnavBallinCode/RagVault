@@ -43,6 +43,35 @@ All in a single executable file that runs on any platform.
 
 ## Llamafile Architecture
 
+### Starting the LLM Server
+
+**⚠️ The LLM server is Service 1 of 3 required services:**
+
+**Terminal 1: Start LLM Server (this terminal)**
+```bash
+# Make executable (first time only)
+chmod +x models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile
+
+# Start server
+./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081
+
+# What you'll see:
+# - Model loading messages
+# - "HTTP server listening at http://0.0.0.0:8081"
+# - Keep this terminal running!
+```
+
+**Also Required (in separate terminals):**
+```bash
+# Terminal 2: API Backend
+python api_server.py
+
+# Terminal 3: Frontend UI
+cd frontend && npm run dev  # React
+# OR
+streamlit run streamlit_app.py  # Streamlit
+```
+
 ### System Integration
 
 ```
