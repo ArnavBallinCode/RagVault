@@ -1,0 +1,165 @@
+/* ============================================================================
+   METRICS DASHBOARD STYLES
+   ============================================================================ */
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-top: 24px;
+}
+
+.metric-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 24px;
+    transition: all 0.2s;
+}
+
+.metric-card.wide {
+    grid-column: span 2;
+}
+
+.metric-card:hover {
+    border-color: var(--accent-purple);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.1);
+}
+
+.metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.metric-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 0;
+}
+
+.metric-header svg {
+    color: var(--accent-purple);
+}
+
+.metric-value {
+    font-size: 48px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 16px;
+}
+
+.metric-details {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.metric-row strong {
+    color: var(--text-primary);
+}
+
+.metric-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+}
+
+.metric-status span {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.latency-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.latency-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    text-align: center;
+}
+
+.latency-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.latency-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+}
+
+.endpoint-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.endpoint-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    transition: all 0.15s;
+}
+
+.endpoint-row:hover {
+    background: rgba(139, 92, 246, 0.1);
+}
+
+.endpoint-path {
+    font-family: 'Fira Code', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
+.endpoint-count {
+    font-weight: 600;
+    color: var(--accent-purple);
+}
+
+@media (max-width: 768px) {
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .metric-card.wide {
+        grid-column: span 1;
+    }
+
+    .latency-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

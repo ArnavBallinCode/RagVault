@@ -18,6 +18,7 @@ This document explains every component of the RagVault RAG (Retrieval-Augmented 
 10. [Phase 9: Response Generation](#10-phase-9-response-generation)
 11. [The Complete Flow: Start to Finish](#11-the-complete-flow-start-to-finish)
 12. [Configuration Parameters Explained](#12-configuration-parameters-explained)
+13. [Observability: Metrics and History](#13-observability-metrics-and-history)
 
 ---
 
@@ -998,6 +999,74 @@ generate_answer(query, relevant_docs, metadata)
 | Better recall for exact terms | Increase bm25_weight (try 0.5) |
 | Better semantic understanding | Decrease bm25_weight (try 0.1) |
 | Lower memory usage | Reduce batch_size_embeddings and batch_size_reranking |
+
+---
+
+## 13. Observability: Metrics and History
+
+RagVault employs an industry-standard "SRE-grade" observability stack based on **Prometheus**. Instead of simple logging, we use instrumented code to track real-time performance data.
+
+### 13.1 Prometheus Metrics Architecture
+
+The system uses the official `prometheus-client` library (`src/metrics.py`) to maintain in-memory counters and histograms. This is extremely efficient and minimally invasive.
+
+#### How It fits Into the System
+
+```
+                  [Backend Server]
+                         |
+      +------------------+------------------+
+      |                  |                  |
+[Counter: Requests] [Histogram: Latency] [Gauge: Index Size]
+      |                  |                  |
+      +------------------+------------------+
+                         |
+           +-------------+-------------+
+           |                           |
+    GET /metrics                 GET /stats
+  (Standard Format)           (JSON Aggregation)
+           |                           |
+           v                           v
+  [Prometheus Server]          [React Frontend]
+  [Grafana Dashboard]          [Admin Dashboard]
+```
+
+### 13.2 Key Metrics Tracked
+
+We define three types of metrics in `metrics.py`:
+
+1. **Counters** (Monotonically increasing)
+   - `ragvault_requests_total`: Total API hits (labeled by endpoint/status)
+   - `ragvault_errors_total`: Error counts
+   - `ragvault_queries_total`: RAG usage counts
+
+2. **Histograms** (Distribution of duration)
+   - `ragvault_request_latency_seconds`: End-to-end API time
+   - `ragvault_retrieval_latency_seconds`: Time spent searching vector DB
+   - `ragvault_llm_latency_seconds`: Time spent generating tokens (critical for UX)
+
+3. **Gauges** (Current value)
+   - `ragvault_documents_total`: Size of knowledge base
+
+### 13.3 Data Consumption
+
+#### The Admin Dashboard (`/stats`)
+The React frontend needs a summary, not raw data. The `/stats` endpoint:
+1. Accesses the internal Prometheus registry
+2. Calculates derivatives (e.g., "Error Rate %" from error counts vs total counts)
+3. Computes percentiles (P95 Latency) from histograms
+4. Returns a clean JSON object for the UI
+
+#### External Monitoring (`/metrics`)
+The `/metrics` endpoint exposes the standard Prometheus text format. You can point a real Prometheus server at `http://localhost:8000/metrics` to ingest this data into enterprise monitoring systems.
+
+### 13.4 Query History Audit
+
+Distinct from performance metrics, the "History" feature provides a granular audit log of actual user interactions.
+
+- **Storage**: `data/query_history.json` (Rotational log, keeps last 1000 queries)
+- **Purpose**: Qualitative analysis (quality of answers), Security audit, User interaction review
+- **Privacy**: Local storage only; sources and queries are never sent to cloud telemetry.
 
 ---
 

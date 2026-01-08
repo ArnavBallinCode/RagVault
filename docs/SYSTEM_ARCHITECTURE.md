@@ -934,4 +934,35 @@ All of this happens **100% offline** on your own hardware.
 
 ---
 
-*Last updated: January 2026*
+## 13. Observability: Metrics and History
+
+RagVault includes built-in observability features to track system performance and user interaction.
+
+### Operational Metrics
+
+The system tracks various performance indicators using the [metrics.py](cci:7://file:///Users/arnavangarkar/Desktop/Secure-Offline-RAG-System/metrics.py:0:0-0:0) module.
+
+#### What is Tracked?
+- **Query Counts**: Total queries processed, broken down by user role.
+- **Latency**: Average response time for the `/query` endpoint.
+- **Errors**: Counts of errors by type and endpoint.
+- **Component Health**: Status of the Retriever, Reranker, and LLM connection.
+
+#### How It Works
+1. **Collection**: Decorators and context managers (like `metrics.time_request`) wrap key functions to capture execution time and outcome.
+2. **Storage**: Metrics are aggregated in-memory and periodically persisted to `data/metrics.json`.
+3. **Visualization**: The Frontend "Metrics" page fetches this data via the `/stats` endpoint to display dashboards.
+
+### Query History
+
+For audit and review purposes, all user queries are logged.
+
+#### History Storage
+- **File**: [data/query_history.json](cci:7://file:///Users/arnavangarkar/Desktop/Secure-Offline-RAG-System/data/query_history.json:0:0-0:0)
+- **Format**: JSON array containing:
+  - Timestamp
+  - User and Role
+  - Query text
+  - Source documents used
+  - Response preview
+

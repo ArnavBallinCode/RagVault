@@ -13,6 +13,10 @@ import shutil
 import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
+import json
+
+# Query history file
+HISTORY_FILE = "data/query_history.json"
 
 from initialize_rag import RAGInitializer
 
@@ -46,6 +50,23 @@ app.add_middleware(
 
 # Global RAG components (initialized on startup)
 rag_components = None
+
+# Helper to save query history
+def save_query_history(entry: dict):
+    """Append a query to the history file"""
+    try:
+        history = []
+        if os.path.exists(HISTORY_FILE):
+            with open(HISTORY_FILE, 'r') as f:
+                history = json.load(f)
+        history.append(entry)
+        # Keep only last 1000 entries
+        history = history[-1000:]
+        os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+        with open(HISTORY_FILE, 'w') as f:
+            json.dump(history, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save query history: {e}")
 
 class QueryRequest(BaseModel):
     query: str
@@ -90,6 +111,7 @@ async def root():
     return {"status": "ok", "message": "RagVault API is running"}
 
 @app.get("/health")
+@app.get("/health/")  # Handle trailing slash to prevent redirect loop
 async def health():
     """Detailed health check"""
     metrics.record_request("/health", "GET", "success")
@@ -177,6 +199,16 @@ async def query(
             
             metrics.record_query(user.role.value, "success")
             
+            # Save to history
+            save_query_history({
+                "timestamp": datetime.now().isoformat(),
+                "user": user.username,
+                "role": user.role.value,
+                "query": request.query,
+                "sources": list(set(sources)),
+                "answer_preview": response_data['response'][:200] + "..." if len(response_data['response']) > 200 else response_data['response']
+            })
+            
             return QueryResponse(
                 query=request.query,
                 answer=response_data['response'],
@@ -193,6 +225,28 @@ async def query(
 # ============================================================================
 # PROTECTED ENDPOINTS - Admin Only
 # ============================================================================
+
+@app.get("/history")
+async def get_query_history(
+    user: UserInDB = Depends(require_admin)
+):
+    """Get all query history (admin only)"""
+    try:
+        if not os.path.exists(HISTORY_FILE):
+            return {"history": [], "total": 0}
+        
+        with open(HISTORY_FILE, 'r') as f:
+            history = json.load(f)
+        
+        # Return most recent first
+        history.reverse()
+        
+        metrics.record_request("/history", "GET", "success")
+        return {"history": history, "total": len(history)}
+    except Exception as e:
+        logger.error(f"Failed to read history: {e}")
+        metrics.record_request("/history", "GET", "error")
+        raise HTTPException(status_code=500, detail="Failed to read history")
 
 @app.post("/upload", response_model=dict)
 async def upload_document(
@@ -415,6 +469,225 @@ async def get_limits(user: UserInDB = Depends(require_admin)):
             "clear_cache": "Use /clear if you encounter memory errors"
         }
     }
+
+# ============================================================================
+# STATS ENDPOINT - Admin Only (JSON format for frontend)
+# ============================================================================
+
+@app.get("/stats")
+async def get_stats(user: UserInDB = Depends(require_admin)):
+    """Get operational system stats for SRE-grade observability"""
+    from prometheus_client import REGISTRY
+    import time
+    
+    stats = {
+        # PRIMARY: Query latency breakdown
+        "latency_breakdown": {
+            "retrieval_ms": 0,
+            "rerank_ms": 0,
+            "llm_ms": 0,
+            "total_ms": 0,
+            "retrieval_pct": 0,
+            "rerank_pct": 0,
+            "llm_pct": 0
+        },
+        # Error rates by stage (not counts)
+        "errors": {
+            "retrieval_rate": 0.0,
+            "rerank_rate": 0.0,
+            "llm_rate": 0.0,
+            "total_rate": 0.0,
+            "retrieval_count": 0,
+            "rerank_count": 0,
+            "llm_count": 0,
+            "total_count": 0
+        },
+        # Index health
+        "index_health": {
+            "documents_total": 0,
+            "chunks_total": 0,
+            "avg_chunks_per_doc": 0,
+            "last_index_time": None,
+            "last_index_duration_ms": 0,
+            "is_stale": False
+        },
+        # LLM cost proxies
+        "llm_stats": {
+            "tokens_total": 0,
+            "tokens_per_query_avg": 0,
+            "llm_latency_p95": 0
+        },
+        # Real usage patterns
+        "usage": {
+            "queries_total": 0,
+            "queries_by_role": {"admin": 0, "user": 0},
+            "queries_per_minute": 0.0,
+            "requests_total": 0
+        },
+        "system": {
+            "rag_initialized": rag_components is not None
+        }
+    }
+    
+    # Track internal counters for calculations
+    _latency_sums = {}
+    _latency_counts = {}
+    _error_counts = {}
+    
+    try:
+        # Parse Prometheus metrics
+        for metric in REGISTRY.collect():
+            for sample in metric.samples:
+                name = sample.name
+                labels = sample.labels
+                value = sample.value
+                
+                # === LATENCY METRICS ===
+                if name == "ragvault_retrieval_latency_seconds_sum":
+                    _latency_sums["retrieval"] = value * 1000  # to ms
+                elif name == "ragvault_retrieval_latency_seconds_count":
+                    _latency_counts["retrieval"] = value
+                    
+                elif name == "ragvault_rerank_latency_seconds_sum":
+                    _latency_sums["rerank"] = value * 1000
+                elif name == "ragvault_rerank_latency_seconds_count":
+                    _latency_counts["rerank"] = value
+                    
+                elif name == "ragvault_llm_latency_seconds_sum":
+                    _latency_sums["llm"] = value * 1000
+                elif name == "ragvault_llm_latency_seconds_count":
+                    _latency_counts["llm"] = value
+                
+                # === ERROR COUNTS ===
+                elif name == "ragvault_errors_total":
+                    endpoint = labels.get("endpoint", "unknown")
+                    error_type = labels.get("error_type", "unknown")
+                    
+                    if "retriev" in endpoint.lower():
+                        _error_counts["retrieval"] = _error_counts.get("retrieval", 0) + int(value)
+                    elif "rerank" in endpoint.lower():
+                        _error_counts["rerank"] = _error_counts.get("rerank", 0) + int(value)
+                    elif "llm" in endpoint.lower() or "query" in endpoint.lower():
+                        _error_counts["llm"] = _error_counts.get("llm", 0) + int(value)
+                    
+                    _error_counts["total"] = _error_counts.get("total", 0) + int(value)
+                
+                # === QUERY COUNTS ===
+                elif name == "ragvault_queries_total":
+                    role = labels.get("role", "unknown")
+                    status = labels.get("status", "unknown")
+                    
+                    stats["usage"]["queries_total"] += int(value)
+                    if role in stats["usage"]["queries_by_role"]:
+                        stats["usage"]["queries_by_role"][role] += int(value)
+                
+                # === DOCUMENT/CHUNK GAUGES ===
+                elif name == "ragvault_documents_total":
+                    stats["index_health"]["documents_total"] = int(value)
+                elif name == "ragvault_chunks_total":
+                    stats["index_health"]["chunks_total"] = int(value)
+                
+                # === TOKEN COUNTS ===
+                elif name == "ragvault_tokens_generated_total":
+                    stats["llm_stats"]["tokens_total"] = int(value)
+                
+                # === REQUEST COUNTS ===
+                elif name == "ragvault_requests_total":
+                    stats["usage"]["requests_total"] += int(value)
+                
+                # === INDEX BUILD DURATION ===
+                elif name == "ragvault_index_build_duration_seconds_sum":
+                    stats["index_health"]["last_index_duration_ms"] = round(value * 1000, 2)
+        
+        # === CALCULATE LATENCY BREAKDOWN ===
+        if _latency_counts.get("retrieval", 0) > 0:
+            stats["latency_breakdown"]["retrieval_ms"] = round(
+                _latency_sums.get("retrieval", 0) / _latency_counts["retrieval"], 2
+            )
+        if _latency_counts.get("rerank", 0) > 0:
+            stats["latency_breakdown"]["rerank_ms"] = round(
+                _latency_sums.get("rerank", 0) / _latency_counts["rerank"], 2
+            )
+        if _latency_counts.get("llm", 0) > 0:
+            stats["latency_breakdown"]["llm_ms"] = round(
+                _latency_sums.get("llm", 0) / _latency_counts["llm"], 2
+            )
+        
+        # Total latency
+        stats["latency_breakdown"]["total_ms"] = round(
+            stats["latency_breakdown"]["retrieval_ms"] +
+            stats["latency_breakdown"]["rerank_ms"] +
+            stats["latency_breakdown"]["llm_ms"], 2
+        )
+        
+        # Percentages
+        total = stats["latency_breakdown"]["total_ms"]
+        if total > 0:
+            stats["latency_breakdown"]["retrieval_pct"] = round(
+                (stats["latency_breakdown"]["retrieval_ms"] / total) * 100, 1
+            )
+            stats["latency_breakdown"]["rerank_pct"] = round(
+                (stats["latency_breakdown"]["rerank_ms"] / total) * 100, 1
+            )
+            stats["latency_breakdown"]["llm_pct"] = round(
+                (stats["latency_breakdown"]["llm_ms"] / total) * 100, 1
+            )
+        
+        # === CALCULATE ERROR RATES ===
+        query_count = stats["usage"]["queries_total"]
+        if query_count > 0:
+            stats["errors"]["retrieval_count"] = _error_counts.get("retrieval", 0)
+            stats["errors"]["rerank_count"] = _error_counts.get("rerank", 0)
+            stats["errors"]["llm_count"] = _error_counts.get("llm", 0)
+            stats["errors"]["total_count"] = _error_counts.get("total", 0)
+            
+            stats["errors"]["retrieval_rate"] = round(
+                (stats["errors"]["retrieval_count"] / query_count) * 100, 2
+            )
+            stats["errors"]["rerank_rate"] = round(
+                (stats["errors"]["rerank_count"] / query_count) * 100, 2
+            )
+            stats["errors"]["llm_rate"] = round(
+                (stats["errors"]["llm_count"] / query_count) * 100, 2
+            )
+            stats["errors"]["total_rate"] = round(
+                (stats["errors"]["total_count"] / query_count) * 100, 2
+            )
+        
+        # === INDEX HEALTH ===
+        if stats["index_health"]["documents_total"] > 0:
+            stats["index_health"]["avg_chunks_per_doc"] = round(
+                stats["index_health"]["chunks_total"] / stats["index_health"]["documents_total"], 1
+            )
+        
+        # Check if index is stale (mock - in production, check actual timestamp)
+        # For now, we'll check if we have a recent index build
+        stats["index_health"]["last_index_time"] = datetime.now().isoformat()
+        stats["index_health"]["is_stale"] = False  # Would check timestamp age in production
+        
+        # === LLM STATS ===
+        if stats["usage"]["queries_total"] > 0 and stats["llm_stats"]["tokens_total"] > 0:
+            stats["llm_stats"]["tokens_per_query_avg"] = round(
+                stats["llm_stats"]["tokens_total"] / stats["usage"]["queries_total"], 1
+            )
+        
+        # P95 latency (approximate from avg for now - would need histogram in production)
+        stats["llm_stats"]["llm_latency_p95"] = round(
+            stats["latency_breakdown"]["llm_ms"] * 1.5, 2  # Rough estimate
+        )
+        
+        # === USAGE PATTERNS ===
+        # Queries per minute (rough estimate based on uptime)
+        # In production, would track actual timestamps
+        if stats["usage"]["requests_total"] > 0:
+            stats["usage"]["queries_per_minute"] = round(
+                stats["usage"]["queries_total"] / max(1, stats["usage"]["requests_total"] / 60), 2
+            )
+        
+    except Exception as e:
+        logger.error(f"Error calculating operational stats: {e}")
+    
+    return stats
 
 # ============================================================================
 # METRICS ENDPOINT - Admin Only

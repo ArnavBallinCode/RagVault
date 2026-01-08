@@ -48,10 +48,11 @@ import {
   Sparkles,
   MessageCircle,
   Send,
+  Clock,
 } from 'lucide-react';
 
 import { api } from './api/client';
-import type { User as UserType, DocumentsResponse, QueryResponse, HealthResponse } from './types';
+import type { User as UserType, DocumentsResponse, QueryResponse, HealthResponse, StatsResponse } from './types';
 import { Plus } from 'lucide-react';
 
 // ============================================================================
@@ -64,6 +65,8 @@ const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () =
     { path: '/', icon: LayoutDashboard, label: 'Pipeline', adminOnly: true },
     { path: '/chat', icon: MessageCircle, label: 'Chat', adminOnly: false },
     { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: true },
+    { path: '/metrics', icon: BarChart3, label: 'Metrics', adminOnly: true },
+    { path: '/history', icon: Clock, label: 'History', adminOnly: true },
     { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
     { path: '/settings', icon: Settings, label: 'Configuration', adminOnly: true },
   ];
@@ -385,11 +388,24 @@ const ResultNode = ({ data }: { data: any }) => {
   );
 };
 
+// Stage Node - Mini decorative node showing pipeline stages
+const StageNode = ({ data }: { data: { label: string; icon: string } }) => {
+  return (
+    <div className="stage-node">
+      <Handle type="target" position={Position.Left} className="stage-handle" />
+      <span className="stage-icon">{data.icon}</span>
+      <span className="stage-label">{data.label}</span>
+      <Handle type="source" position={Position.Right} className="stage-handle" />
+    </div>
+  );
+};
+
 const nodeTypes = {
   upload: UploadNode,
   process: ProcessNode,
   query: QueryNode,
   result: ResultNode,
+  stage: StageNode,
 };
 
 const PipelinePage = ({
@@ -398,31 +414,56 @@ const PipelinePage = ({
   refreshStatus, refreshProgress, onRefresh,
   queryStatus, queryResult, queryProgress, queryStage, onQuery
 }: any) => {
+  // Expanded nodes: main action cards + intermediate stage nodes
   const initialNodes: Node[] = [
-    { id: 'upload', type: 'upload', position: { x: 80, y: 150 }, data: {} },
-    { id: 'process', type: 'process', position: { x: 380, y: 150 }, data: {} },
-    { id: 'query', type: 'query', position: { x: 680, y: 150 }, data: {} },
-    { id: 'result', type: 'result', position: { x: 1000, y: 150 }, data: {} },
+    // Main action cards
+    { id: 'upload', type: 'upload', position: { x: 50, y: 200 }, data: {} },
+    { id: 'process', type: 'process', position: { x: 350, y: 200 }, data: {} },
+    { id: 'query', type: 'query', position: { x: 650, y: 200 }, data: {} },
+    { id: 'result', type: 'result', position: { x: 950, y: 200 }, data: {} },
+    // Pipeline stage indicators (mini nodes)
+    { id: 'stage-chunk', type: 'stage', position: { x: 210, y: 120 }, data: { label: 'Chunking', icon: '✂️' } },
+    { id: 'stage-embed', type: 'stage', position: { x: 250, y: 280 }, data: { label: 'Embedding', icon: '🔢' } },
+    { id: 'stage-index', type: 'stage', position: { x: 290, y: 340 }, data: { label: 'Indexing', icon: '📚' } },
+    { id: 'stage-retrieve', type: 'stage', position: { x: 510, y: 120 }, data: { label: 'Retrieval', icon: '🔍' } },
+    { id: 'stage-rerank', type: 'stage', position: { x: 550, y: 280 }, data: { label: 'Reranking', icon: '📊' } },
+    { id: 'stage-generate', type: 'stage', position: { x: 810, y: 120 }, data: { label: 'Generation', icon: '🤖' } },
   ];
 
   const initialEdges: Edge[] = [
-    { id: 'e1', source: 'upload', target: 'process', animated: true, style: { stroke: 'rgba(255,255,255,0.2)' }, markerEnd: { type: MarkerType.ArrowClosed } },
-    { id: 'e2', source: 'process', target: 'query', animated: true, style: { stroke: 'rgba(255,255,255,0.2)' }, markerEnd: { type: MarkerType.ArrowClosed } },
-    { id: 'e3', source: 'query', target: 'result', animated: true, style: { stroke: 'rgba(255,255,255,0.2)' }, markerEnd: { type: MarkerType.ArrowClosed } },
+    // Main flow
+    { id: 'e-main-1', source: 'upload', target: 'process', animated: true, style: { stroke: '#8b5cf6', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
+    { id: 'e-main-2', source: 'process', target: 'query', animated: true, style: { stroke: '#8b5cf6', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
+    { id: 'e-main-3', source: 'query', target: 'result', animated: true, style: { stroke: '#8b5cf6', strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' } },
+    // Stage connections (decorative)
+    { id: 'e-s1', source: 'upload', target: 'stage-chunk', animated: false, style: { stroke: 'rgba(139, 92, 246, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s2', source: 'stage-chunk', target: 'stage-embed', animated: false, style: { stroke: 'rgba(139, 92, 246, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s3', source: 'stage-embed', target: 'stage-index', animated: false, style: { stroke: 'rgba(139, 92, 246, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s4', source: 'stage-index', target: 'process', animated: false, style: { stroke: 'rgba(139, 92, 246, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s5', source: 'process', target: 'stage-retrieve', animated: false, style: { stroke: 'rgba(6, 182, 212, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s6', source: 'stage-retrieve', target: 'stage-rerank', animated: false, style: { stroke: 'rgba(6, 182, 212, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s7', source: 'stage-rerank', target: 'query', animated: false, style: { stroke: 'rgba(6, 182, 212, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s8', source: 'query', target: 'stage-generate', animated: false, style: { stroke: 'rgba(245, 158, 11, 0.3)', strokeDasharray: '5,5' } },
+    { id: 'e-s9', source: 'stage-generate', target: 'result', animated: false, style: { stroke: 'rgba(245, 158, 11, 0.3)', strokeDasharray: '5,5' } },
   ];
 
   const [nodes, , onNodesChange] = useNodesState(initialNodes);
   const [edges, , onEdgesChange] = useEdgesState(initialEdges);
 
-  const nodesWithData = nodes.map(node => ({
-    ...node,
-    data: {
-      ...(node.id === 'upload' && { status: uploadStatus, filename: uploadFilename, onUpload, isOnline }),
-      ...(node.id === 'process' && { status: refreshStatus, progress: refreshProgress, chunks: health?.documents_indexed || 0, onRefresh, isOnline }),
-      ...(node.id === 'query' && { status: queryStatus, onQuery, isOnline }),
-      ...(node.id === 'result' && { result: queryResult, status: queryStatus === 'querying' ? 'loading' : (queryResult ? 'ready' : 'idle'), progress: queryProgress, stage: queryStage }),
+  const nodesWithData = nodes.map(node => {
+    if (node.type === 'stage') {
+      return node; // Stage nodes don't need extra data
     }
-  }));
+    return {
+      ...node,
+      data: {
+        ...(node.id === 'upload' && { status: uploadStatus, filename: uploadFilename, onUpload, isOnline }),
+        ...(node.id === 'process' && { status: refreshStatus, progress: refreshProgress, chunks: health?.documents_indexed || 0, onRefresh, isOnline }),
+        ...(node.id === 'query' && { status: queryStatus, onQuery, isOnline }),
+        ...(node.id === 'result' && { result: queryResult, status: queryStatus === 'querying' ? 'loading' : (queryResult ? 'ready' : 'idle'), progress: queryProgress, stage: queryStage }),
+      }
+    };
+  });
 
   return (
     <div className="pipeline-page">
@@ -433,7 +474,7 @@ const PipelinePage = ({
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.3 }}
+        fitViewOptions={{ padding: 0.2 }}
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#1a1a1a" gap={30} size={1} />
@@ -756,6 +797,268 @@ Answer:`}
 // ============================================================================
 // CONFIGURATION PAGE
 // ============================================================================
+// ============================================================================
+// METRICS PAGE
+// ============================================================================
+
+const MetricsPage = () => {
+  const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchStats = async () => {
+    try {
+      const data = await api.getStats();
+      setStats(data);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load stats');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="page-content">
+        <div className="loading-state">
+          <Loader2 size={48} className="spin" />
+          <p>Loading operational metrics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page-content">
+        <div className="error-state">
+          <XCircle size={48} />
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  // Extract data - support both old and new API formats
+  const latency = stats.latency_breakdown || stats.latency || {
+    retrieval_ms: 0, rerank_ms: 0, llm_ms: 0, total_ms: 0,
+    retrieval_pct: 0, rerank_pct: 0, llm_pct: 0,
+    avg_retrieval_ms: 0, avg_rerank_ms: 0, avg_llm_ms: 0, avg_query_ms: 0
+  };
+
+  const docs = stats.index_health || stats.documents || {
+    documents_total: 0, chunks_total: 0, avg_chunks_per_doc: 0,
+    total: 0, chunks: 0
+  };
+
+  const queries = stats.usage || stats.queries || {
+    queries_total: 0, queries_by_role: { admin: 0, user: 0 }, queries_per_minute: 0,
+    total: 0, by_role: { admin: 0, user: 0 }
+  };
+
+  const requests = stats.requests || { total: 0, by_endpoint: {}, by_status: { success: 0, error: 0 } };
+
+  // Calculate latency values - handle both formats
+  const retrievalMs = 'retrieval_ms' in latency ? latency.retrieval_ms : (latency as any).avg_retrieval_ms || 0;
+  const rerankMs = 'rerank_ms' in latency ? latency.rerank_ms : (latency as any).avg_rerank_ms || 0;
+  const llmMs = 'llm_ms' in latency ? latency.llm_ms : (latency as any).avg_llm_ms || 0;
+  const totalMs = retrievalMs + rerankMs + llmMs;
+
+  const retrievalPct = totalMs > 0 ? (retrievalMs / totalMs) * 100 : 0;
+  const rerankPct = totalMs > 0 ? (rerankMs / totalMs) * 100 : 0;
+  const llmPct = totalMs > 0 ? (llmMs / totalMs) * 100 : 0;
+
+  // Calculate document values - handle both formats
+  const docTotal = 'documents_total' in docs ? docs.documents_total : (docs as any).total || 0;
+  const chunkTotal = 'chunks_total' in docs ? docs.chunks_total : (docs as any).chunks || 0;
+  const avgChunks = docTotal > 0 ? chunkTotal / docTotal : 0;
+
+  // Calculate query values - handle both formats
+  const queryTotal = 'queries_total' in queries ? queries.queries_total : (queries as any).total || 0;
+  const queryByRole = 'queries_by_role' in queries ? queries.queries_by_role : (queries as any).by_role || { admin: 0, user: 0 };
+
+  // Calculate error rate from requests
+  const errorRate = requests.total > 0 ? (requests.by_status.error / requests.total) * 100 : 0;
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <h1>⚡ Operational Metrics</h1>
+          <p>SRE-grade observability for RAG system health and performance</p>
+        </div>
+        <button className="btn-secondary" onClick={fetchStats}>
+          <RefreshCw size={16} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="operational-metrics">
+        {/* PRIMARY PANEL: Query Latency Breakdown */}
+        <div className="metrics-panel metrics-panel-hero">
+          <div className="panel-header">
+            <h2>⏱️ Query Lifecycle Breakdown</h2>
+            <span className="panel-subtitle">Where is time being spent?</span>
+          </div>
+          <div className="latency-breakdown">
+            <div className="latency-total">
+              <span className="total-label">Total Query Time</span>
+              <span className="total-value">{totalMs.toFixed(0)}ms</span>
+            </div>
+            <div className="latency-stages">
+              <div className="stage-bar-container">
+                <div className="stage-bar">
+                  <div className="stage-segment retrieval" style={{ width: `${retrievalPct}%` }} />
+                  <div className="stage-segment rerank" style={{ width: `${rerankPct}%` }} />
+                  <div className="stage-segment llm" style={{ width: `${llmPct}%` }} />
+                </div>
+              </div>
+              <div className="stage-details">
+                <div className="stage-item">
+                  <span className="stage-color retrieval"></span>
+                  <span className="stage-name">Retrieval</span>
+                  <span className="stage-time">{retrievalMs.toFixed(0)}ms</span>
+                  <span className="stage-pct">{retrievalPct.toFixed(1)}%</span>
+                </div>
+                <div className="stage-item">
+                  <span className="stage-color rerank"></span>
+                  <span className="stage-name">Rerank</span>
+                  <span className="stage-time">{rerankMs.toFixed(0)}ms</span>
+                  <span className="stage-pct">{rerankPct.toFixed(1)}%</span>
+                </div>
+                <div className="stage-item">
+                  <span className="stage-color llm"></span>
+                  <span className="stage-name">LLM Generation</span>
+                  <span className="stage-time">{llmMs.toFixed(0)}ms</span>
+                  <span className="stage-pct">{llmPct.toFixed(1)}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Error Rate Panel */}
+        <div className="metrics-panel">
+          <div className="panel-header">
+            <h2>🚨 Request Health</h2>
+            <span className="panel-subtitle">Success vs Error Rate</span>
+          </div>
+          <div className="index-stats">
+            <div className="index-stat-row">
+              <div className="stat-group">
+                <div className="stat-item-inline">
+                  <span className="stat-label">Total Requests</span>
+                  <span className="stat-value">{requests.total}</span>
+                </div>
+                <div className="stat-item-inline">
+                  <span className="stat-label">Success</span>
+                  <span className="stat-value" style={{ color: '#10b981' }}>{requests.by_status.success}</span>
+                </div>
+                <div className="stat-item-inline">
+                  <span className="stat-label">Errors</span>
+                  <span className="stat-value" style={{ color: '#ef4444' }}>{requests.by_status.error}</span>
+                </div>
+              </div>
+            </div>
+            <div className="index-stat-row">
+              <div className="stat-item-block">
+                <span className="stat-label">Error Rate</span>
+                <span className={`stat-value-sm ${errorRate > 5 ? 'stale' : 'fresh'}`}>
+                  {errorRate.toFixed(2)}% {errorRate < 1 ? '✅' : errorRate < 5 ? '⚠️' : '❌'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Index Health */}
+        <div className="metrics-panel">
+          <div className="panel-header">
+            <h2>📚 Index Health</h2>
+            <span className="panel-subtitle">Document and chunk counts</span>
+          </div>
+          <div className="index-stats">
+            <div className="index-stat-row">
+              <div className="stat-group">
+                <div className="stat-item-inline">
+                  <span className="stat-label">Documents</span>
+                  <span className="stat-value">{docTotal}</span>
+                </div>
+                <div className="stat-item-inline">
+                  <span className="stat-label">Chunks</span>
+                  <span className="stat-value">{chunkTotal}</span>
+                </div>
+                <div className="stat-item-inline">
+                  <span className="stat-label">Avg/Doc</span>
+                  <span className="stat-value">{avgChunks.toFixed(1)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Usage Stats */}
+        <div className="metrics-panel">
+          <div className="panel-header">
+            <h2>📈 Usage Patterns</h2>
+            <span className="panel-subtitle">Query volume by role</span>
+          </div>
+          <div className="usage-stats">
+            <div className="usage-row">
+              <div className="usage-item">
+                <span className="usage-label">Total Queries</span>
+                <span className="usage-value">{queryTotal}</span>
+              </div>
+            </div>
+            <div className="usage-breakdown">
+              <div className="usage-bar-container">
+                <div className="usage-bar">
+                  <div
+                    className="usage-segment admin"
+                    style={{ width: queryTotal > 0 ? `${(queryByRole.admin / queryTotal) * 100}%` : '0%' }}
+                  >
+                    <span>{queryByRole.admin}</span>
+                  </div>
+                  <div
+                    className="usage-segment user"
+                    style={{ width: queryTotal > 0 ? `${(queryByRole.user / queryTotal) * 100}%` : '0%' }}
+                  >
+                    <span>{queryByRole.user}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="usage-legend">
+                <span><span className="legend-box admin"></span> Admin: {queryByRole.admin}</span>
+                <span><span className="legend-box user"></span> User: {queryByRole.user}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* System Status */}
+        <div className="metrics-panel">
+          <div className="panel-header">
+            <h2>🔧 System Status</h2>
+          </div>
+          <div className="system-status">
+            <div className={`status-badge ${stats.system.rag_initialized ? 'online' : 'offline'}`}>
+              {stats.system.rag_initialized ? '🟢 RAG Initialized' : '🔴 RAG Not Ready'}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ConfigPage = () => (
   <div className="page-content">
@@ -836,6 +1139,103 @@ const ConfigPage = () => (
     </div>
   </div>
 );
+
+// ============================================================================
+// HISTORY PAGE (Admin Only)
+// ============================================================================
+
+const HistoryPage = () => {
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        setLoading(true);
+        const data = await api.getHistory();
+        setHistory(data.history || []);
+        setError(null);
+      } catch (err) {
+        setError('Failed to load history');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchHistory();
+  }, []);
+
+  return (
+    <div className="page-content history-page">
+      <div className="page-header">
+        <h1><Clock size={28} /> Query History</h1>
+        <span className="history-count">{history.length} queries logged</span>
+      </div>
+
+      {loading && (
+        <div className="loading-state">
+          <Loader2 size={32} className="spin" />
+          <p>Loading history...</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="error-state">
+          <p>{error}</p>
+        </div>
+      )}
+
+      {!loading && !error && history.length === 0 && (
+        <div className="empty-state">
+          <Clock size={48} opacity={0.3} />
+          <h3>No history yet</h3>
+          <p>Queries will appear here once users start asking questions.</p>
+        </div>
+      )}
+
+      {!loading && !error && history.length > 0 && (
+        <div className="history-table-wrapper">
+          <table className="history-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>User</th>
+                <th>Query</th>
+                <th>Sources</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((entry, idx) => (
+                <tr key={idx}>
+                  <td className="history-time">
+                    {new Date(entry.timestamp).toLocaleString()}
+                  </td>
+                  <td className="history-user">
+                    <span className={`user-badge ${entry.role}`}>
+                      {entry.user}
+                    </span>
+                  </td>
+                  <td className="history-query">
+                    <div className="query-text">{entry.query}</div>
+                    <div className="answer-preview">{entry.answer_preview}</div>
+                  </td>
+                  <td className="history-sources">
+                    {entry.sources?.map((s: string, i: number) => (
+                      <span key={i} className="source-chip-mini">
+                        📄 {s.split('/').pop()}
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ============================================================================
 // CHAT PAGE
@@ -930,85 +1330,64 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
   };
 
   return (
-    <div className="chat-page">
-      <div className="chat-container">
-        <div className="chat-header">
-          <div className="chat-title">
-            <MessageCircle size={24} />
-            <h1>Chat</h1>
+    <div className="chat-page-gpt">
+      {/* Clean centered chat area */}
+      <div className="chat-content-area">
+        {messages.length === 0 ? (
+          <div className="chat-welcome">
+            <div className="welcome-icon">💬</div>
+            <h1>RagVault</h1>
+            <p>Ask anything about your documents</p>
           </div>
-          <div className="chat-settings">
-            {userRole === 'admin' && onRefresh && (
-              <button className="btn-secondary small" onClick={onRefresh} title="Re-index documents">
-                <RefreshCw size={16} />
-              </button>
-            )}
-            <span>Top K:</span>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={topK}
-              onChange={(e) => setTopK(Number(e.target.value))}
-            />
-            <span className="topk-val">{topK}</span>
-          </div>
-        </div>
-
-        <div className="chat-messages">
-          {messages.length === 0 && (
-            <div className="chat-empty">
-              <Bot size={48} opacity={0.3} />
-              <h2>Start a conversation</h2>
-              <p>Ask questions about your uploaded documents</p>
-            </div>
-          )}
-
-          {messages.map((msg) => (
-            <div key={msg.id} className={`chat-message ${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === 'user' ? '👤' : '🤖'}
-              </div>
-              <div className="message-content">
-                <div className="message-bubble">
-                  {msg.role === 'assistant' ? (
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  ) : (
-                    msg.content
-                  )}
-                </div>
-                {msg.sources && msg.sources.length > 0 && (
-                  <div className="message-sources">
-                    <span>Sources:</span>
-                    {msg.sources.map((s, i) => (
-                      <span key={i} className="source-tag-mini">{s.split('/').pop()}</span>
-                    ))}
+        ) : (
+          <div className="chat-messages-gpt">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`message-row ${msg.role}`}>
+                <div className="message-wrapper">
+                  <div className="message-icon">
+                    {msg.role === 'user' ? '👤' : '✨'}
                   </div>
-                )}
-                <div className="message-time">
-                  {msg.timestamp.toLocaleTimeString()}
+                  <div className="message-body">
+                    <div className="message-text">
+                      {msg.role === 'assistant' ? (
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="message-sources-gpt">
+                        {msg.sources.map((s, i) => (
+                          <span key={i} className="source-chip">📄 {s.split('/').pop()}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {isLoading && (
-            <div className="chat-message assistant">
-              <div className="message-avatar">🤖</div>
-              <div className="message-content">
-                <div className="message-bubble typing">
-                  <span></span>
-                  <span></span>
-                  <span></span>
+            {isLoading && (
+              <div className="message-row assistant">
+                <div className="message-wrapper">
+                  <div className="message-icon">✨</div>
+                  <div className="message-body">
+                    <div className="typing-indicator">
+                      <span></span><span></span><span></span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div ref={messagesEndRef} />
-        </div>
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
 
-        <div className="chat-input-area">
+      {/* ChatGPT-style floating input bar */}
+      <div className="chat-input-gpt-wrapper">
+        <div className="chat-input-gpt">
           {userRole === 'admin' && (
             <>
               <input
@@ -1019,7 +1398,7 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
                 style={{ display: 'none' }}
               />
               <button
-                className="upload-btn"
+                className="input-action-btn"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || !isOnline}
                 title="Upload document"
@@ -1028,18 +1407,39 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
               </button>
             </>
           )}
+
           <input
             type="text"
-            placeholder={isOnline ? "Ask a question about your documents..." : "Backend offline..."}
+            className="chat-input-field"
+            placeholder={isOnline ? "Ask anything..." : "Connecting..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
             disabled={!isOnline || isLoading}
           />
-          <button onClick={sendMessage} disabled={!isOnline || isLoading || !input.trim()}>
+
+          {/* Top-K indicator (subtle) */}
+          <div className="topk-mini" title={`Top K: ${topK} - ${topK <= 3 ? 'Focused' : topK <= 8 ? 'Balanced' : 'Broader'}`}>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={topK}
+              onChange={(e) => setTopK(Number(e.target.value))}
+              className="topk-mini-slider"
+            />
+            <span className="topk-mini-value">{topK}</span>
+          </div>
+
+          <button
+            className="send-btn-gpt"
+            onClick={sendMessage}
+            disabled={!isOnline || isLoading || !input.trim()}
+          >
             {isLoading ? <Loader2 size={20} className="spin" /> : <Send size={20} />}
           </button>
         </div>
+        <p className="input-hint">RagVault uses your documents to provide contextual answers</p>
       </div>
     </div>
   );
@@ -1298,6 +1698,8 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
                   }}
                 />
               } />
+              <Route path="/metrics" element={<MetricsPage />} />
+              <Route path="/history" element={<HistoryPage />} />
               <Route path="/models" element={<LLMPage />} />
               <Route path="/settings" element={<ConfigPage />} />
             </>

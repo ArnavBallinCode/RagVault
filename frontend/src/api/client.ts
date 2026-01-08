@@ -4,7 +4,8 @@ import type {
     RefreshResponse,
     DocumentsResponse,
     QueryResponse,
-    LoginResponse
+    LoginResponse,
+    StatsResponse
 } from '../types';
 
 const API_BASE = 'http://localhost:8000';
@@ -77,7 +78,11 @@ export const api = {
     },
 
     async health(): Promise<HealthResponse> {
-        const res = await fetch(`${API_BASE}/health`);
+        const res = await fetch(`${API_BASE}/health`, {
+            method: 'GET',
+            redirect: 'follow',
+            credentials: 'omit'  // No credentials needed for health check
+        });
         if (!res.ok) throw new Error('Failed to fetch health status');
         return res.json();
     },
@@ -188,6 +193,28 @@ export const api = {
             const error = await res.json();
             throw new Error(error.detail || 'Query failed');
         }
+        return res.json();
+    },
+
+    async getStats(): Promise<StatsResponse> {
+        const res = await fetch(`${API_BASE}/stats`, {
+            headers: getHeaders(),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) throw new Error('Failed to fetch stats');
+        return res.json();
+    },
+
+    async getHistory(): Promise<{ history: any[]; total: number }> {
+        const res = await fetch(`${API_BASE}/history`, {
+            headers: getHeaders(),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) throw new Error('Failed to fetch history');
         return res.json();
     },
 };

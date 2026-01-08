@@ -54,3 +54,74 @@ export interface LoginResponse {
     username: string;
     name: string;
 }
+
+export interface StatsResponse {
+    // Support both old and new formats
+    latency_breakdown?: {
+        retrieval_ms: number;
+        rerank_ms: number;
+        llm_ms: number;
+        total_ms: number;
+        retrieval_pct: number;
+        rerank_pct: number;
+        llm_pct: number;
+    };
+    // Old format
+    latency?: {
+        avg_query_ms: number;
+        avg_retrieval_ms: number;
+        avg_rerank_ms: number;
+        avg_llm_ms: number;
+    };
+    errors?: {
+        retrieval_rate: number;
+        rerank_rate: number;
+        llm_rate: number;
+        total_rate: number;
+        retrieval_count: number;
+        rerank_count: number;
+        llm_count: number;
+        total_count: number;
+    };
+    index_health?: {
+        documents_total: number;
+        chunks_total: number;
+        avg_chunks_per_doc: number;
+        last_index_time: string | null;
+        last_index_duration_ms: number;
+        is_stale: boolean;
+    };
+    // Old format
+    documents?: {
+        total: number;
+        chunks: number;
+    };
+    llm_stats?: {
+        tokens_total: number;
+        tokens_per_query_avg: number;
+        llm_latency_p95: number;
+    };
+    usage?: {
+        queries_total: number;
+        queries_by_role: { admin: number; user: number };
+        queries_per_minute: number;
+        requests_total: number;
+    };
+    // Old format
+    queries?: {
+        total: number;
+        by_role: { admin: number; user: number };
+        successful: number;
+        failed: number;
+    };
+    requests?: {
+        total: number;
+        by_endpoint: Record<string, number>;
+        by_status: { success: number; error: number };
+    };
+    system: {
+        rag_initialized: boolean;
+        uptime_requests?: number;
+    };
+}
+

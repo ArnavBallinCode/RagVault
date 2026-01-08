@@ -116,3 +116,7 @@ coverage.xml
 # Conda environment files
 *.conda
 environment.yml
+
+# Runtime data files
+data/metrics.json
+data/query_history.json
