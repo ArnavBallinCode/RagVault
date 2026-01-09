@@ -94,6 +94,10 @@ async def startup_event():
     """Initialize RAG system on startup"""
     global rag_components
     try:
+        # Reload users from file to ensure latest data
+        reload_users()
+        logger.info("Users loaded from file")
+        
         logger.info("Initializing RAG system...")
         with metrics.time_index_build():
             initializer = RAGInitializer("config/init_config.yaml", "config/process_config.yaml")

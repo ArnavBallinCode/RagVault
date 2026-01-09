@@ -1332,14 +1332,26 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boolean; userRole: 'admin' | 'user'; onUpload?: (file: File) => Promise<void>; onRefresh?: () => Promise<void> }) => {
+const ChatPage = ({ isOnline, userRole, onRefresh }: { isOnline: boolean; userRole: 'admin' | 'user'; onRefresh?: () => Promise<void> }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [topK, setTopK] = useState(5);
   const [uploading, setUploading] = useState(false);
+  const [selectedDept, setSelectedDept] = useState('general');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const departments = [
+    { value: 'general', label: 'General' },
+    { value: 'finance', label: 'Finance' },
+    { value: 'hr', label: 'HR' },
+    { value: 'engineering', label: 'Engineering' },
+    { value: 'product', label: 'Product' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'operations', label: 'Operations' },
+    { value: 'sales', label: 'Sales' },
+  ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1351,16 +1363,16 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !onUpload) return;
+    if (!file) return;
 
     setUploading(true);
     try {
-      await onUpload(file);
+      await api.uploadDocument(file, selectedDept);
       if (onRefresh) await onRefresh();
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `✅ Document "${file.name}" uploaded and indexed successfully!`,
+        content: `✅ Document "${file.name}" uploaded to **${selectedDept}** department and indexed!`,
         timestamp: new Date(),
       }]);
     } catch (err) {
@@ -1473,6 +1485,26 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
         <div className="chat-input-gpt">
           {userRole === 'admin' && (
             <>
+              {/* Department selector for upload */}
+              <select
+                value={selectedDept}
+                onChange={(e) => setSelectedDept(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--card-bg)',
+                  color: 'var(--text-primary)',
+                  fontSize: '13px',
+                  marginRight: '4px',
+                  cursor: 'pointer'
+                }}
+                title="Select department for upload"
+              >
+                {departments.map(d => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1759,9 +1791,6 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
             <ChatPage
               isOnline={isOnline}
               userRole={user.role}
-              onUpload={async (file) => {
-                await api.uploadDocument(file, 'general');
-              }}
               onRefresh={handleRefresh}
             />
           } />
