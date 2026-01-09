@@ -120,3 +120,6 @@ environment.yml
 # Runtime data files
 data/metrics.json
 data/query_history.json
+# Local model folders (download separately)
+models/nomic-*
+models/bge-*

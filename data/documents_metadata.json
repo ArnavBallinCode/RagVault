@@ -1,18 +1,23 @@
 {
   "_description": "Document to department mapping",
   "Causal Inference ChinmayanandaA.pdf": {
-    "department": "finance",
-    "uploaded_at": "2026-01-09T10:34:08.037904",
+    "department": "general",
+    "uploaded_at": "2026-01-09T11:11:44.273532",
     "uploaded_by": "admin"
   },
   "Edge AI Systems Design Syllabus.pdf": {
     "department": "general",
-    "uploaded_at": "2026-01-09T10:52:14.755245",
+    "uploaded_at": "2026-01-09T11:13:03.072040",
     "uploaded_by": "admin"
   },
   "C-GENBTC-B-m4-l1-en-file-9.en.pdf": {
     "department": "general",
     "uploaded_at": "2026-01-09T09:58:21.786368",
+    "uploaded_by": "admin"
+  },
+  "Biochallenge User Manual.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T12:28:45.090825",
     "uploaded_by": "admin"
   }
 }

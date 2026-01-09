@@ -213,7 +213,7 @@ const UploadNode = ({ data }: { data: any }) => {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.docx,.txt,.md"
+            accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.tiff,.bmp"
             style={{ display: 'none' }}
             onChange={handleFileSelect}
           />
@@ -1508,7 +1508,7 @@ const ChatPage = ({ isOnline, userRole, onRefresh }: { isOnline: boolean; userRo
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.docx,.txt,.md,.doc"
+                accept=".pdf,.docx,.txt,.md,.doc,.png,.jpg,.jpeg,.tiff,.bmp"
                 onChange={handleFileUpload}
                 style={{ display: 'none' }}
               />
