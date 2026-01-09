@@ -1,0 +1,13 @@
+version: "3"
+agent:
+  authtoken: 2xYCaLejjRaFHLzsNZiL1nHSTGn_367yw+vAYP5QCRRHu51ss
+
+tunnels:
+  frontend:
+    addr: 5173
+    proto: http
+    domain: better-dashing-rattler.ngrok-free.app
+    
+  api:
+    addr: 8000
+    proto: http

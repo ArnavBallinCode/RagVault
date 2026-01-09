@@ -5,10 +5,33 @@ import type {
     DocumentsResponse,
     QueryResponse,
     LoginResponse,
-    StatsResponse
+    StatsResponse,
+    UsersResponse,
+    DepartmentsResponse
 } from '../types';
 
-const API_BASE = 'http://localhost:8000';
+// Auto-detect if we're accessing via ngrok or local network
+const getApiBase = () => {
+    const hostname = window.location.hostname;
+
+    // If accessing via ngrok domain
+    if (hostname.includes('ngrok-free.app')) {
+        // Try to get API URL from environment or use a second ngrok tunnel
+        // For now, this won't work - user needs ngrok paid plan for 2 tunnels
+        return import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    }
+
+    // If accessing via local network IP (e.g., 10.0.15.40)
+    if (hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+        // Use the same IP but port 8000 for API
+        return `http://${hostname}:8000`;
+    }
+
+    // Local access (localhost)
+    return 'http://localhost:8000';
+};
+
+const API_BASE = getApiBase();
 
 // Token management
 let authToken: string | null = localStorage.getItem('ragvault_token');
@@ -68,7 +91,8 @@ export const api = {
         localStorage.setItem('ragvault_user', JSON.stringify({
             username: data.username,
             name: data.name,
-            role: data.role
+            role: data.role,
+            departments: data.departments || ['general']
         }));
         return data;
     },
@@ -87,9 +111,10 @@ export const api = {
         return res.json();
     },
 
-    async uploadDocument(file: File): Promise<UploadResponse> {
+    async uploadDocument(file: File, department: string): Promise<UploadResponse> {
         const formData = new FormData();
         formData.append('file', file);
+        formData.append('department', department);
 
         const res = await fetch(`${API_BASE}/upload`, {
             method: 'POST',
@@ -215,6 +240,74 @@ export const api = {
         await handleResponse(res);
 
         if (!res.ok) throw new Error('Failed to fetch history');
+        return res.json();
+    },
+
+    // User Management (Admin only)
+    async getUsers(): Promise<UsersResponse> {
+        const res = await fetch(`${API_BASE}/users`, {
+            headers: getHeaders(),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) throw new Error('Failed to fetch users');
+        return res.json();
+    },
+
+    async updateUserDepartments(
+        username: string,
+        departments: string[]
+    ): Promise<{ status: string; username: string; departments: string[] }> {
+        const res = await fetch(`${API_BASE}/users/${encodeURIComponent(username)}/departments`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getHeaders()
+            },
+            body: JSON.stringify({ departments }),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to update user departments');
+        }
+        return res.json();
+    },
+
+    // Department Management
+    async getDepartments(): Promise<DepartmentsResponse> {
+        const res = await fetch(`${API_BASE}/departments`, {
+            headers: getHeaders(),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) throw new Error('Failed to fetch departments');
+        return res.json();
+    },
+
+    async updateDocumentDepartment(
+        filename: string,
+        department: string
+    ): Promise<{ status: string; filename: string; department: string }> {
+        const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(filename)}/department`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getHeaders()
+            },
+            body: JSON.stringify({ department }),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to update document department');
+        }
         return res.json();
     },
 };

@@ -1,13 +1,16 @@
 """
 RagVault RBAC (Role-Based Access Control) Module
-Centralized access control for API endpoints
+Centralized access control with role AND department enforcement
 """
 
 from typing import List, Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from auth import decode_token, get_user, Role, TokenData, UserInDB
+from auth import (
+    decode_token, get_user, Role, TokenData, UserInDB,
+    Department, get_user_accessible_departments, SHARED_DEPARTMENT
+)
 
 # Security scheme
 security = HTTPBearer(auto_error=False)
@@ -71,6 +74,68 @@ async def get_optional_user(
         return get_user(token_data.username)
     except Exception:
         return None
+
+
+# ============================================================================
+# DEPARTMENT-AWARE ACCESS CONTROL
+# ============================================================================
+
+def can_access_department(user: UserInDB, department: str) -> bool:
+    """
+    Check if user can access a specific department.
+    
+    Rules:
+    - Admins can access all departments
+    - Users with "*" in departments can access all
+    - Everyone can access 'general' (shared department)
+    - Users can access their explicitly assigned departments
+    """
+    if user.role == Role.ADMIN:
+        return True
+    if "*" in user.departments:
+        return True
+    if department == SHARED_DEPARTMENT:
+        return True
+    return department in user.departments
+
+
+def filter_by_department(items: List[dict], user: UserInDB, dept_key: str = "department") -> List[dict]:
+    """
+    Filter a list of items to only those the user can access.
+    
+    Args:
+        items: List of dicts with department info
+        user: Current user
+        dept_key: Key in dict containing department value
+    
+    Returns:
+        Filtered list
+    """
+    accessible = get_user_accessible_departments(user)
+    return [item for item in items if item.get(dept_key) in accessible]
+
+
+def require_department_access(user: UserInDB, department: str) -> None:
+    """
+    Raise 403 if user cannot access the specified department.
+    """
+    if not can_access_department(user, department):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied. You don't have access to department: {department}",
+        )
+
+
+def validate_department(department: str) -> None:
+    """
+    Validate that a department string is valid.
+    """
+    valid_depts = [d.value for d in Department]
+    if department not in valid_depts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid department: {department}. Valid options: {valid_depts}",
+        )
 
 
 class RoleRequired:

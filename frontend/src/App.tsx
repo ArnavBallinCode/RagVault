@@ -64,7 +64,7 @@ const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () =
   const allNavItems = [
     { path: '/', icon: LayoutDashboard, label: 'Pipeline', adminOnly: true },
     { path: '/chat', icon: MessageCircle, label: 'Chat', adminOnly: false },
-    { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: true },
+    { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: false },
     { path: '/metrics', icon: BarChart3, label: 'Metrics', adminOnly: true },
     { path: '/history', icon: Clock, label: 'History', adminOnly: true },
     { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
@@ -147,13 +147,30 @@ const Breadcrumb = () => {
 
 const UploadNode = ({ data }: { data: any }) => {
   const [dragOver, setDragOver] = useState(false);
+  const [selectedDept, setSelectedDept] = useState('general');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const departments = [
+    { value: 'general', label: 'General (All Users)' },
+    { value: 'finance', label: 'Finance' },
+    { value: 'hr', label: 'HR' },
+    { value: 'engineering', label: 'Engineering' },
+    { value: 'product', label: 'Product' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'operations', label: 'Operations' },
+    { value: 'sales', label: 'Sales' },
+  ];
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) data.onUpload(file);
+    if (file) data.onUpload(file, selectedDept);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) data.onUpload(file, selectedDept);
   };
 
   return (
@@ -163,6 +180,28 @@ const UploadNode = ({ data }: { data: any }) => {
       <div className="node-content-area">
         <h3>Data</h3>
         <p className="node-subtitle">Document Upload</p>
+
+        {/* Department Selector */}
+        <select
+          value={selectedDept}
+          onChange={(e) => setSelectedDept(e.target.value)}
+          className="dept-selector"
+          style={{
+            width: '100%',
+            padding: '6px 8px',
+            marginBottom: '8px',
+            borderRadius: '6px',
+            border: '1px solid var(--border-color)',
+            background: 'var(--card-bg)',
+            color: 'var(--text-primary)',
+            fontSize: '12px',
+            cursor: 'pointer'
+          }}
+        >
+          {departments.map(d => (
+            <option key={d.value} value={d.value}>{d.label}</option>
+          ))}
+        </select>
 
         <div
           className={`node-dropzone ${dragOver ? 'dragover' : ''} ${data.status}`}
@@ -176,7 +215,7 @@ const UploadNode = ({ data }: { data: any }) => {
             type="file"
             accept=".pdf,.docx,.txt,.md"
             style={{ display: 'none' }}
-            onChange={(e) => e.target.files?.[0] && data.onUpload(e.target.files[0])}
+            onChange={handleFileSelect}
           />
 
           {data.status === 'idle' && <FileUp size={24} />}
@@ -498,6 +537,11 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
     onConfirm: () => void;
   } | null>(null);
 
+  // Get user role from localStorage
+  const storedUser = localStorage.getItem('ragvault_user');
+  const userRole = storedUser ? JSON.parse(storedUser).role : 'user';
+  const isAdmin = userRole === 'admin';
+
   const confirmAction = (title: string, message: string, onConfirm: () => void) => {
     setConfirmModal({ show: true, title, message, onConfirm });
   };
@@ -540,6 +584,19 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
 
   // Get documents_info for file sizes if available
   const docsInfo = documents?.documents_info || [];
+  const userDepts = documents?.user_departments || [];
+
+  // Department badge color mapping
+  const deptColors: Record<string, string> = {
+    finance: '#10b981',
+    hr: '#8b5cf6',
+    engineering: '#3b82f6',
+    product: '#f59e0b',
+    legal: '#ef4444',
+    operations: '#06b6d4',
+    sales: '#ec4899',
+    general: '#6b7280'
+  };
 
   return (
     <div className="page-content">
@@ -564,16 +621,23 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
       <div className="page-header">
         <div>
           <h1>Documents</h1>
-          <p>Manage your indexed documents • Max 10MB per file • Keep under 50MB total</p>
+          <p>
+            {isAdmin
+              ? 'Manage all documents • Max 10MB per file • Keep under 50MB total'
+              : `Viewing documents from: ${userDepts.join(', ') || 'general'}`
+            }
+          </p>
         </div>
-        <div className="header-actions">
-          <button className="btn-danger" onClick={handleClearAll} disabled={clearing}>
-            <Trash2 size={16} /> {clearing ? 'Clearing...' : 'Clear All'}
-          </button>
-          <button className="btn-primary" onClick={onRefresh} disabled={!isOnline}>
-            <RefreshCw size={16} /> Re-index All
-          </button>
-        </div>
+        {isAdmin && (
+          <div className="header-actions">
+            <button className="btn-danger" onClick={handleClearAll} disabled={clearing}>
+              <Trash2 size={16} /> {clearing ? 'Clearing...' : 'Clear All'}
+            </button>
+            <button className="btn-primary" onClick={onRefresh} disabled={!isOnline}>
+              <RefreshCw size={16} /> Re-index All
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="stats-grid">
@@ -581,7 +645,7 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
           <Database size={24} />
           <div>
             <span className="stat-value">{documents?.count || 0}</span>
-            <span className="stat-label">Total Documents</span>
+            <span className="stat-label">{isAdmin ? 'Total Documents' : 'Your Documents'}</span>
           </div>
         </div>
         <div className="stat-card">
@@ -594,8 +658,8 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
         <div className="stat-card warning">
           <Sparkles size={24} />
           <div>
-            <span className="stat-value">10MB</span>
-            <span className="stat-label">Max File Size</span>
+            <span className="stat-value">{userDepts.length}</span>
+            <span className="stat-label">Departments Access</span>
           </div>
         </div>
       </div>
@@ -609,8 +673,9 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
       <div className="documents-table">
         <div className="table-header">
           <span>Document</span>
+          <span>Department</span>
           <span>Size</span>
-          <span>Actions</span>
+          {isAdmin && <span>Actions</span>}
         </div>
         {docsInfo.length > 0 ? (
           docsInfo.map((doc: any, i: number) => (
@@ -619,17 +684,32 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
                 <FileText size={18} />
                 <span>{doc.filename}</span>
               </div>
+              <span
+                className="dept-badge"
+                style={{
+                  backgroundColor: deptColors[doc.department] || '#6b7280',
+                  color: 'white',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontSize: '12px',
+                  fontWeight: 500
+                }}
+              >
+                {doc.department}
+              </span>
               <span className="doc-size">{doc.size_mb} MB</span>
-              <div className="doc-actions">
-                <button
-                  title="Delete"
-                  className="danger"
-                  onClick={() => handleDelete(doc.filename)}
-                  disabled={deleting === doc.filename}
-                >
-                  {deleting === doc.filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="doc-actions">
+                  <button
+                    title="Delete"
+                    className="danger"
+                    onClick={() => handleDelete(doc.filename)}
+                    disabled={deleting === doc.filename}
+                  >
+                    {deleting === doc.filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
           ))
         ) : documents?.documents?.map((doc: string, i: number) => {
@@ -640,17 +720,20 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
                 <FileText size={18} />
                 <span>{filename}</span>
               </div>
+              <span className="dept-badge" style={{ backgroundColor: '#6b7280', color: 'white', padding: '2px 8px', borderRadius: '9999px', fontSize: '12px' }}>general</span>
               <span className="doc-size">-</span>
-              <div className="doc-actions">
-                <button
-                  title="Delete"
-                  className="danger"
-                  onClick={() => handleDelete(filename)}
-                  disabled={deleting === filename}
-                >
-                  {deleting === filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="doc-actions">
+                  <button
+                    title="Delete"
+                    className="danger"
+                    onClick={() => handleDelete(filename)}
+                    disabled={deleting === filename}
+                  >
+                    {deleting === filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -1249,14 +1332,26 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boolean; userRole: 'admin' | 'user'; onUpload?: (file: File) => Promise<void>; onRefresh?: () => Promise<void> }) => {
+const ChatPage = ({ isOnline, userRole, onRefresh }: { isOnline: boolean; userRole: 'admin' | 'user'; onRefresh?: () => Promise<void> }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [topK, setTopK] = useState(5);
   const [uploading, setUploading] = useState(false);
+  const [selectedDept, setSelectedDept] = useState('general');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const departments = [
+    { value: 'general', label: 'General' },
+    { value: 'finance', label: 'Finance' },
+    { value: 'hr', label: 'HR' },
+    { value: 'engineering', label: 'Engineering' },
+    { value: 'product', label: 'Product' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'operations', label: 'Operations' },
+    { value: 'sales', label: 'Sales' },
+  ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1268,16 +1363,16 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !onUpload) return;
+    if (!file) return;
 
     setUploading(true);
     try {
-      await onUpload(file);
+      await api.uploadDocument(file, selectedDept);
       if (onRefresh) await onRefresh();
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `✅ Document "${file.name}" uploaded and indexed successfully!`,
+        content: `✅ Document "${file.name}" uploaded to **${selectedDept}** department and indexed!`,
         timestamp: new Date(),
       }]);
     } catch (err) {
@@ -1390,6 +1485,26 @@ const ChatPage = ({ isOnline, userRole, onUpload, onRefresh }: { isOnline: boole
         <div className="chat-input-gpt">
           {userRole === 'admin' && (
             <>
+              {/* Department selector for upload */}
+              <select
+                value={selectedDept}
+                onChange={(e) => setSelectedDept(e.target.value)}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--card-bg)',
+                  color: 'var(--text-primary)',
+                  fontSize: '13px',
+                  marginRight: '4px',
+                  cursor: 'pointer'
+                }}
+                title="Select department for upload"
+              >
+                {departments.map(d => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1465,7 +1580,8 @@ const LoginModal = ({ onLogin }: { onLogin: (user: UserType) => void }) => {
       onLogin({
         username: response.username,
         name: response.name,
-        role: response.role
+        role: response.role,
+        departments: response.departments || ['general']
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -1540,15 +1656,13 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
         return; // If health fails, don't try documents
       }
 
-      // Documents require admin role - only fetch if admin
-      if (user.role === 'admin') {
-        try {
-          const d = await api.getDocuments();
-          setDocuments(d);
-        } catch {
-          // Documents fetch failed, but backend is still online
-          console.warn('Could not fetch documents');
-        }
+      // Documents - all users can fetch (API filters by department)
+      try {
+        const d = await api.getDocuments();
+        setDocuments(d);
+      } catch {
+        // Documents fetch failed, but backend is still online
+        console.warn('Could not fetch documents');
       }
     };
     fetchData();
@@ -1556,12 +1670,15 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
     return () => clearInterval(interval);
   }, [user.role]);
 
-  const handleUpload = useCallback(async (file: File) => {
+  const handleUpload = useCallback(async (file: File, department: string = 'general') => {
     setUploadStatus('uploading');
     try {
-      const res = await api.uploadDocument(file);
+      const res = await api.uploadDocument(file, department);
       setUploadStatus('success');
       setUploadFilename(res.filename);
+      // Refresh documents list after upload
+      const d = await api.getDocuments();
+      setDocuments(d);
     } catch {
       setUploadStatus('error');
     }
@@ -1672,32 +1789,31 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
             <ChatPage
               isOnline={isOnline}
               userRole={user.role}
-              onUpload={async (file) => {
-                await api.uploadDocument(file);
-              }}
               onRefresh={handleRefresh}
             />
           } />
+          {/* Documents page accessible to all users (filtered by department) */}
+          <Route path="/documents" element={
+            <DocumentsPage
+              documents={documents}
+              isOnline={isOnline}
+              onRefresh={handleRefresh}
+              onDocumentsChange={async () => {
+                const d = await api.getDocuments();
+                setDocuments(d);
+                try {
+                  const h = await api.health();
+                  setHealth(h);
+                  setIsOnline(h.status === 'healthy');
+                } catch {
+                  setIsOnline(false);
+                }
+              }}
+            />
+          } />
+          {/* Admin-only routes */}
           {user.role === 'admin' ? (
             <>
-              <Route path="/documents" element={
-                <DocumentsPage
-                  documents={documents}
-                  isOnline={isOnline}
-                  onRefresh={handleRefresh}
-                  onDocumentsChange={async () => {
-                    const d = await api.getDocuments();
-                    setDocuments(d);
-                    try {
-                      const h = await api.health();
-                      setHealth(h);
-                      setIsOnline(h.status === 'healthy');
-                    } catch {
-                      setIsOnline(false);
-                    }
-                  }}
-                />
-              } />
               <Route path="/metrics" element={<MetricsPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/models" element={<LLMPage />} />
@@ -1705,7 +1821,6 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
             </>
           ) : (
             <>
-              <Route path="/documents" element={<Navigate to="/chat" replace />} />
               <Route path="/models" element={<Navigate to="/chat" replace />} />
               <Route path="/settings" element={<Navigate to="/chat" replace />} />
               <Route path="/" element={<Navigate to="/chat" replace />} />

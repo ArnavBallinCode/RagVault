@@ -526,6 +526,22 @@ Scrape content from websites directly through the web interface:
 python process_single_query.py --query "Your question here"
 ```
 
+### Remote Access (Phone/Tablet/Other Devices)
+
+Access RagVault from your phone or any device using ngrok:
+
+```bash
+# Terminal 4 (after starting all 3 services)
+./start_ngrok.sh
+```
+
+This creates public URLs (e.g., `https://abc123.ngrok-free.app`) that you can access from:
+- 📱 Your phone (iOS/Android)
+- 💻 Other computers on different networks
+- 🌐 Any device with internet access
+
+**Full setup guide:** [NGROK_SETUP.md](NGROK_SETUP.md)
+
 ---
 
 ## Supported File Types

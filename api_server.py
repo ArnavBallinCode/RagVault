@@ -3,7 +3,7 @@ RagVault REST API Server
 Production-grade API with RBAC and Prometheus metrics
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
@@ -23,12 +23,17 @@ from initialize_rag import RAGInitializer
 # Auth & RBAC imports
 from auth import (
     authenticate_user, create_access_token, 
-    LoginRequest, Token, Role, ACCESS_TOKEN_EXPIRE_MINUTES
+    LoginRequest, Token, Role, ACCESS_TOKEN_EXPIRE_MINUTES,
+    Department, get_user_accessible_departments, get_all_users,
+    update_user_departments, reload_users
 )
 from rbac import (
-    RoleRequired, get_current_user, require_admin, require_any_authenticated
+    RoleRequired, get_current_user, require_admin, require_any_authenticated,
+    can_access_department, filter_by_department, require_department_access,
+    validate_department
 )
 from auth import UserInDB
+from document_metadata import document_metadata
 
 # Metrics imports
 import metrics
@@ -42,7 +47,13 @@ app = FastAPI(title="RagVault API", version="2.0")
 # Add CORS middleware for frontend connection
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://10.0.15.40:5173",
+        "https://better-dashing-rattler.ngrok-free.app",
+        "https://*.ngrok-free.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -83,6 +94,10 @@ async def startup_event():
     """Initialize RAG system on startup"""
     global rag_components
     try:
+        # Reload users from file to ensure latest data
+        reload_users()
+        logger.info("Users loaded from file")
+        
         logger.info("Initializing RAG system...")
         with metrics.time_index_build():
             initializer = RAGInitializer("config/init_config.yaml", "config/process_config.yaml")
@@ -132,8 +147,15 @@ async def login(request: LoginRequest):
             detail="Invalid username or password"
         )
     
+    # Include departments in token
+    accessible_depts = get_user_accessible_departments(user)
+    
     access_token = create_access_token(
-        data={"sub": user.username, "role": user.role.value}
+        data={
+            "sub": user.username, 
+            "role": user.role.value,
+            "departments": accessible_depts
+        }
     )
     
     metrics.record_request("/login", "POST", "success")
@@ -143,7 +165,8 @@ async def login(request: LoginRequest):
         token_type="bearer",
         role=user.role.value,
         username=user.username,
-        name=user.name
+        name=user.name,
+        departments=accessible_depts
     )
 
 # ============================================================================
@@ -251,14 +274,19 @@ async def get_query_history(
 @app.post("/upload", response_model=dict)
 async def upload_document(
     file: UploadFile = File(...),
+    department: str = Form(...),
     user: UserInDB = Depends(require_admin)
 ):
     """
     Upload a document to the system
     Supported formats: PDF, DOCX, TXT, DOC, MD
+    Requires department assignment
     """
     try:
         with metrics.time_request("/upload", "POST"):
+            # Validate department
+            validate_department(department)
+            
             # Validate file extension
             allowed_extensions = {'.pdf', '.docx', '.txt', '.doc', '.md'}
             file_ext = os.path.splitext(file.filename)[1].lower()
@@ -276,7 +304,10 @@ async def upload_document(
             with open(upload_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             
-            logger.info(f"Uploaded file by {user.username}: {file.filename}")
+            # Save document metadata with department
+            document_metadata.set(file.filename, department, user.username)
+            
+            logger.info(f"Uploaded file by {user.username}: {file.filename} (dept: {department})")
             
             # Update document count metric
             doc_count = len([f for f in os.listdir("data/uploads") if os.path.isfile(os.path.join("data/uploads", f))])
@@ -285,8 +316,9 @@ async def upload_document(
             
             return {
                 "status": "success",
-                "message": f"File '{file.filename}' uploaded successfully",
+                "message": f"File '{file.filename}' uploaded to {department} department",
                 "filename": file.filename,
+                "department": department,
                 "path": upload_path,
                 "next_step": "Call POST /refresh to index the new document"
             }
@@ -343,24 +375,39 @@ async def refresh_indices(user: UserInDB = Depends(require_admin)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/documents")
-async def list_documents(user: UserInDB = Depends(require_admin)):
-    """List all indexed documents with file info"""
+async def list_documents(user: UserInDB = Depends(require_any_authenticated)):
+    """List documents accessible to the current user (filtered by department)"""
     with metrics.time_request("/documents", "GET"):
         upload_dir = "data/uploads"
         documents = []
         
+        # Get user's accessible departments
+        accessible_depts = get_user_accessible_departments(user)
+        
         if os.path.exists(upload_dir):
-            for filename in os.listdir(upload_dir):
+            # Ensure all documents have metadata
+            all_files = [f for f in os.listdir(upload_dir) if os.path.isfile(os.path.join(upload_dir, f))]
+            document_metadata.ensure_all_documents_have_metadata(all_files)
+            
+            for filename in all_files:
                 file_path = os.path.join(upload_dir, filename)
-                if os.path.isfile(file_path):
-                    stat = os.stat(file_path)
-                    documents.append({
-                        "filename": filename,
-                        "path": file_path,
-                        "size_bytes": stat.st_size,
-                        "size_mb": round(stat.st_size / (1024 * 1024), 2),
-                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
-                    })
+                doc_dept = document_metadata.get_department(filename)
+                
+                # Filter by department - users only see their departments
+                if doc_dept not in accessible_depts:
+                    continue
+                
+                stat = os.stat(file_path)
+                doc_meta = document_metadata.get(filename) or {}
+                documents.append({
+                    "filename": filename,
+                    "path": file_path,
+                    "department": doc_dept,
+                    "size_bytes": stat.st_size,
+                    "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "uploaded_by": doc_meta.get("uploaded_by", "unknown")
+                })
         
         total_chunks = len(rag_components.original_chunks) if rag_components else 0
         
@@ -371,7 +418,9 @@ async def list_documents(user: UserInDB = Depends(require_admin)):
             "documents_info": documents,
             "count": len(documents),
             "total_chunks": total_chunks,
-            "max_file_size_mb": 10
+            "max_file_size_mb": 10,
+            "user_departments": accessible_depts,
+            "is_admin": user.role == Role.ADMIN
         }
 
 @app.delete("/documents/{filename}")
@@ -688,6 +737,114 @@ async def get_stats(user: UserInDB = Depends(require_admin)):
         logger.error(f"Error calculating operational stats: {e}")
     
     return stats
+
+# ============================================================================
+# USER MANAGEMENT - Admin Only
+# ============================================================================
+
+class UpdateDepartmentsRequest(BaseModel):
+    departments: List[str]
+
+
+@app.get("/users")
+async def list_users(user: UserInDB = Depends(require_admin)):
+    """List all users with their department assignments (admin only)"""
+    users = get_all_users()
+    return {
+        "users": [
+            {
+                "username": u.username,
+                "name": u.name,
+                "role": u.role.value,
+                "departments": u.departments
+            }
+            for u in users
+        ],
+        "total": len(users),
+        "available_departments": [d.value for d in Department]
+    }
+
+
+@app.put("/users/{username}/departments")
+async def update_user_deps(
+    username: str,
+    request: UpdateDepartmentsRequest,
+    user: UserInDB = Depends(require_admin)
+):
+    """Update department assignments for a user (admin only)"""
+    try:
+        updated = update_user_departments(username, request.departments)
+        if not updated:
+            raise HTTPException(status_code=404, detail=f"User '{username}' not found")
+        
+        # Reload users to reflect changes
+        reload_users()
+        
+        logger.info(f"Admin {user.username} updated departments for {username}: {request.departments}")
+        return {
+            "status": "success",
+            "username": username,
+            "departments": request.departments
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating user departments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# DOCUMENT DEPARTMENT MANAGEMENT - Admin Only
+# ============================================================================
+
+class UpdateDocumentDepartmentRequest(BaseModel):
+    department: str
+
+
+@app.put("/documents/{filename}/department")
+async def update_document_department(
+    filename: str,
+    request: UpdateDocumentDepartmentRequest,
+    user: UserInDB = Depends(require_admin)
+):
+    """Reassign a document to a different department (admin only)"""
+    try:
+        # Validate department
+        validate_department(request.department)
+        
+        # Check document exists
+        file_path = os.path.join("data/uploads", filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"Document '{filename}' not found")
+        
+        # Update department
+        if not document_metadata.update_department(filename, request.department):
+            # Document not in metadata, add it
+            document_metadata.set(filename, request.department, user.username)
+        
+        logger.info(f"Admin {user.username} moved '{filename}' to {request.department}")
+        return {
+            "status": "success",
+            "filename": filename,
+            "department": request.department
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating document department: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/departments")
+async def list_departments(user: UserInDB = Depends(require_any_authenticated)):
+    """List all available departments"""
+    accessible = get_user_accessible_departments(user)
+    return {
+        "departments": [d.value for d in Department],
+        "user_departments": accessible,
+        "shared_department": "general"
+    }
+
 
 # ============================================================================
 # METRICS ENDPOINT - Admin Only
