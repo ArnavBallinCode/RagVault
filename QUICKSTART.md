@@ -195,3 +195,18 @@ lsof -i :8081
 - Text, Markdown, HTML, CSV, JSON
 - Python, JavaScript, TypeScript, Java, C++, and more
 - Jupyter Notebooks (.ipynb)
+
+## Remote Access (Phone/Tablet)
+
+**Want to access RagVault from your phone or other devices?**
+
+Use ngrok to create secure tunnels:
+
+```bash
+# Terminal 4 (after starting all 3 services)
+./start_ngrok.sh
+```
+
+You'll get public URLs like `https://abc123.ngrok-free.app` that you can access from any device!
+
+📱 **See [NGROK_SETUP.md](NGROK_SETUP.md) for detailed instructions**

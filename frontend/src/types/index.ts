@@ -1,7 +1,19 @@
+// Department type - fixed set V1
+export type Department =
+    | 'finance'
+    | 'hr'
+    | 'engineering'
+    | 'product'
+    | 'legal'
+    | 'operations'
+    | 'sales'
+    | 'general';
+
 export interface User {
     username: string;
     name: string;
     role: 'admin' | 'user';
+    departments: string[];  // User's accessible departments
 }
 
 export interface HealthResponse {
@@ -14,6 +26,7 @@ export interface UploadResponse {
     status: string;
     message: string;
     filename: string;
+    department: string;  // NEW
     path: string;
     next_step: string;
 }
@@ -24,10 +37,24 @@ export interface RefreshResponse {
     documents_indexed: number;
 }
 
+export interface DocumentInfo {
+    filename: string;
+    path: string;
+    department: string;  // NEW
+    size_bytes: number;
+    size_mb: number;
+    modified: string;
+    uploaded_by?: string;
+}
+
 export interface DocumentsResponse {
     total_chunks: number;
     documents: string[];
+    documents_info: DocumentInfo[];  // NEW: Detailed info
     count: number;
+    user_departments: string[];  // NEW
+    is_admin: boolean;  // NEW
+    max_file_size_mb?: number;
 }
 
 export interface QueryRequest {
@@ -53,6 +80,27 @@ export interface LoginResponse {
     role: 'admin' | 'user';
     username: string;
     name: string;
+    departments: string[];  // NEW
+}
+
+// User management types
+export interface UserInfo {
+    username: string;
+    name: string;
+    role: 'admin' | 'user';
+    departments: string[];
+}
+
+export interface UsersResponse {
+    users: UserInfo[];
+    total: number;
+    available_departments: string[];
+}
+
+export interface DepartmentsResponse {
+    departments: string[];
+    user_departments: string[];
+    shared_department: string;
 }
 
 export interface StatsResponse {
@@ -124,4 +172,3 @@ export interface StatsResponse {
         uptime_requests?: number;
     };
 }
-

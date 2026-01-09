@@ -1,0 +1,15 @@
+{
+  "_description": "Document to department mapping",
+  "Causal Inference ChinmayanandaA.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T06:52:11.039890",
+    "uploaded_by": "system",
+    "auto_assigned": true
+  },
+  "Edge AI Systems Design Syllabus.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T06:52:11.039893",
+    "uploaded_by": "system",
+    "auto_assigned": true
+  }
+}

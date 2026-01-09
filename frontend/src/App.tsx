@@ -498,6 +498,11 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
     onConfirm: () => void;
   } | null>(null);
 
+  // Get user role from localStorage
+  const storedUser = localStorage.getItem('ragvault_user');
+  const userRole = storedUser ? JSON.parse(storedUser).role : 'user';
+  const isAdmin = userRole === 'admin';
+
   const confirmAction = (title: string, message: string, onConfirm: () => void) => {
     setConfirmModal({ show: true, title, message, onConfirm });
   };
@@ -540,6 +545,19 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
 
   // Get documents_info for file sizes if available
   const docsInfo = documents?.documents_info || [];
+  const userDepts = documents?.user_departments || [];
+
+  // Department badge color mapping
+  const deptColors: Record<string, string> = {
+    finance: '#10b981',
+    hr: '#8b5cf6',
+    engineering: '#3b82f6',
+    product: '#f59e0b',
+    legal: '#ef4444',
+    operations: '#06b6d4',
+    sales: '#ec4899',
+    general: '#6b7280'
+  };
 
   return (
     <div className="page-content">
@@ -564,16 +582,23 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
       <div className="page-header">
         <div>
           <h1>Documents</h1>
-          <p>Manage your indexed documents • Max 10MB per file • Keep under 50MB total</p>
+          <p>
+            {isAdmin
+              ? 'Manage all documents • Max 10MB per file • Keep under 50MB total'
+              : `Viewing documents from: ${userDepts.join(', ') || 'general'}`
+            }
+          </p>
         </div>
-        <div className="header-actions">
-          <button className="btn-danger" onClick={handleClearAll} disabled={clearing}>
-            <Trash2 size={16} /> {clearing ? 'Clearing...' : 'Clear All'}
-          </button>
-          <button className="btn-primary" onClick={onRefresh} disabled={!isOnline}>
-            <RefreshCw size={16} /> Re-index All
-          </button>
-        </div>
+        {isAdmin && (
+          <div className="header-actions">
+            <button className="btn-danger" onClick={handleClearAll} disabled={clearing}>
+              <Trash2 size={16} /> {clearing ? 'Clearing...' : 'Clear All'}
+            </button>
+            <button className="btn-primary" onClick={onRefresh} disabled={!isOnline}>
+              <RefreshCw size={16} /> Re-index All
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="stats-grid">
@@ -581,7 +606,7 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
           <Database size={24} />
           <div>
             <span className="stat-value">{documents?.count || 0}</span>
-            <span className="stat-label">Total Documents</span>
+            <span className="stat-label">{isAdmin ? 'Total Documents' : 'Your Documents'}</span>
           </div>
         </div>
         <div className="stat-card">
@@ -594,8 +619,8 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
         <div className="stat-card warning">
           <Sparkles size={24} />
           <div>
-            <span className="stat-value">10MB</span>
-            <span className="stat-label">Max File Size</span>
+            <span className="stat-value">{userDepts.length}</span>
+            <span className="stat-label">Departments Access</span>
           </div>
         </div>
       </div>
@@ -609,8 +634,9 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
       <div className="documents-table">
         <div className="table-header">
           <span>Document</span>
+          <span>Department</span>
           <span>Size</span>
-          <span>Actions</span>
+          {isAdmin && <span>Actions</span>}
         </div>
         {docsInfo.length > 0 ? (
           docsInfo.map((doc: any, i: number) => (
@@ -619,17 +645,32 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
                 <FileText size={18} />
                 <span>{doc.filename}</span>
               </div>
+              <span
+                className="dept-badge"
+                style={{
+                  backgroundColor: deptColors[doc.department] || '#6b7280',
+                  color: 'white',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontSize: '12px',
+                  fontWeight: 500
+                }}
+              >
+                {doc.department}
+              </span>
               <span className="doc-size">{doc.size_mb} MB</span>
-              <div className="doc-actions">
-                <button
-                  title="Delete"
-                  className="danger"
-                  onClick={() => handleDelete(doc.filename)}
-                  disabled={deleting === doc.filename}
-                >
-                  {deleting === doc.filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="doc-actions">
+                  <button
+                    title="Delete"
+                    className="danger"
+                    onClick={() => handleDelete(doc.filename)}
+                    disabled={deleting === doc.filename}
+                  >
+                    {deleting === doc.filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
           ))
         ) : documents?.documents?.map((doc: string, i: number) => {
@@ -640,17 +681,20 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
                 <FileText size={18} />
                 <span>{filename}</span>
               </div>
+              <span className="dept-badge" style={{ backgroundColor: '#6b7280', color: 'white', padding: '2px 8px', borderRadius: '9999px', fontSize: '12px' }}>general</span>
               <span className="doc-size">-</span>
-              <div className="doc-actions">
-                <button
-                  title="Delete"
-                  className="danger"
-                  onClick={() => handleDelete(filename)}
-                  disabled={deleting === filename}
-                >
-                  {deleting === filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="doc-actions">
+                  <button
+                    title="Delete"
+                    className="danger"
+                    onClick={() => handleDelete(filename)}
+                    disabled={deleting === filename}
+                  >
+                    {deleting === filename ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -1465,7 +1509,8 @@ const LoginModal = ({ onLogin }: { onLogin: (user: UserType) => void }) => {
       onLogin({
         username: response.username,
         name: response.name,
-        role: response.role
+        role: response.role,
+        departments: response.departments || ['general']
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -1559,7 +1604,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
   const handleUpload = useCallback(async (file: File) => {
     setUploadStatus('uploading');
     try {
-      const res = await api.uploadDocument(file);
+      const res = await api.uploadDocument(file, 'general');
       setUploadStatus('success');
       setUploadFilename(res.filename);
     } catch {
@@ -1673,7 +1718,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               isOnline={isOnline}
               userRole={user.role}
               onUpload={async (file) => {
-                await api.uploadDocument(file);
+                await api.uploadDocument(file, 'general');
               }}
               onRefresh={handleRefresh}
             />

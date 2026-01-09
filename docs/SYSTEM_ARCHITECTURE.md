@@ -1767,6 +1767,316 @@ Every setting in RagVault and what it does (based on init_config.yaml and proces
 
 ## Observability & Monitoring
 
+### Performance Metrics Dashboard
+
+RagVault includes a real-time metrics page at `/metrics` showing exactly where time is spent:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    QUERY PERFORMANCE BREAKDOWN                       │
+│                                                                      │
+│   TOTAL QUERY TIME: ~110 seconds (typical for your setup)          │
+│                                                                      │
+│   ┌────────────────────────────────────────────────────────────┐    │
+│   │ 1. Retrieval (FAISS + BM25)           389ms      0.4%     │    │
+│   │    ▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    │    │
+│   └────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│   ┌────────────────────────────────────────────────────────────┐    │
+│   │ 2. Reranking (BGE model)            6,762ms      6.1%     │    │
+│   │    ▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    │    │
+│   └────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│   ┌────────────────────────────────────────────────────────────┐    │
+│   │ 3. LLM Generation (Mistral)      102,826ms     93.5%      │    │
+│   │    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓    │    │
+│   └────────────────────────────────────────────────────────────┘    │
+│                                                                      │
+│   ⚠️  LLM IS THE BOTTLENECK! (93.5% of total time)                 │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Why Is LLM Generation So Slow?
+
+**Current Performance: ~100 seconds per query**
+
+The Mistral-Nemo-12B model is running on CPU/MPS with limited GPU acceleration:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     LLM PERFORMANCE FACTORS                          │
+│                                                                      │
+│   WHAT'S HAPPENING:                                                  │
+│   ────────────────                                                   │
+│                                                                      │
+│   1. Model Size: 12 billion parameters (~8.5GB file)                │
+│      • Each token generation requires matrix multiplications        │
+│      • Across billions of weights                                   │
+│                                                                      │
+│   2. Quantization: Q5_K_M (5-bit)                                   │
+│      • Already compressed from full 32-bit                          │
+│      • Trade-off: smaller size, slower than GPU-optimized          │
+│                                                                      │
+│   3. Hardware Limitation:                                            │
+│      • Apple M3 (8-core CPU + 8-core GPU)                          │
+│      • Llamafile uses -ngl 999 (offload to Metal/MPS)              │
+│      • But M3's 8GB unified memory limits parallel processing       │
+│      • No dedicated VRAM like NVIDIA GPUs                           │
+│                                                                      │
+│   4. Token Generation Process:                                      │
+│      • Generates one token at a time (autoregressive)               │
+│      • Each token depends on previous tokens                        │
+│      • Cannot parallelize token generation                          │
+│      • ~100 tokens = ~100 sequential forward passes                │
+│                                                                      │
+│   5. Context Size:                                                   │
+│      • You're sending 2 document chunks + prompt                    │
+│      • Larger context = more computation per token                  │
+│      • 128K token window means overhead even with small prompts     │
+│                                                                      │
+│   ROUGH CALCULATION:                                                 │
+│   • Generation: ~1 second per token (on your M3)                    │
+│   • Typical response: 100-150 tokens                                │
+│   • Total: 100-150 seconds per query                                │
+│                                                                      │
+│   This is NORMAL for local LLM inference on laptop hardware!        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Network vs Local Performance
+
+**You asked: "Are we even using ngrok?"**
+
+**Current Status: NO - You're using local network access**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  CURRENT SETUP (LOCAL NETWORK)                       │
+│                                                                      │
+│   Your Phone                Your Computer                            │
+│   ──────────                ──────────────                           │
+│                                                                      │
+│   http://10.0.15.40:5173 ────► Frontend (React) Port 5173          │
+│              │                        │                              │
+│              │                        ▼                              │
+│              │                 API Server Port 8000                 │
+│              │                        │                              │
+│              │                        ▼                              │
+│              │                 LLM Server Port 8081                 │
+│              │                        │                              │
+│              └────── Response ◄───────┘                              │
+│                                                                      │
+│   Network Path: Phone → WiFi Router → Computer                      │
+│   Latency: ~1-5ms (negligible)                                      │
+│   NOT using ngrok at all!                                            │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   IF YOU WERE USING NGROK:                                           │
+│                                                                      │
+│   Your Phone (Anywhere)     Internet       Your Computer            │
+│   ───────────────────       ────────       ──────────────           │
+│                                                                      │
+│   better-dashing-rattler... ──► ngrok.io ──► localhost:5173        │
+│                                    │                                 │
+│                                    ▼                                 │
+│                            Adds ~50-200ms latency                    │
+│                            (Still negligible vs 100s LLM time)       │
+│                                                                      │
+│   NGROK DOES NOT SLOW DOWN YOUR LLM!                                │
+│   • It only adds network latency (~100ms typical)                   │
+│   • Your 100s delay is from LLM computation, not network            │
+│   • Even with ngrok: 100,100ms vs 100,000ms (0.1% difference)       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### How to Speed Up LLM Generation
+
+**TARGET: Reduce 100s to 10-30s**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    OPTIMIZATION STRATEGIES                           │
+│                                                                      │
+│   OPTION 1: Use Smaller Model (RECOMMENDED)                          │
+│   ───────────────────────────────────────────────────                │
+│   Switch from Mistral-Nemo-12B to a smaller model:                  │
+│                                                                      │
+│   • Mistral-7B-Instruct (7B params, ~4.4GB)                         │
+│     Expected: 30-50s per query on M3                                │
+│     Quality: Still excellent for most tasks                          │
+│                                                                      │
+│   • TinyLlama-1.1B (1.1B params, ~0.6GB)                            │
+│     Expected: 5-10s per query on M3                                 │
+│     Quality: Good for simple Q&A, may struggle with complex tasks   │
+│                                                                      │
+│   • Phi-3-Mini-4K (3.8B params, ~2.3GB)                             │
+│     Expected: 15-25s per query on M3                                │
+│     Quality: Excellent for reasoning, comparable to larger models   │
+│                                                                      │
+│   How to switch:                                                     │
+│   1. Download new .llamafile from Mozilla HuggingFace               │
+│   2. Update start command to use new file                           │
+│   3. Restart LLM server                                             │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   OPTION 2: Reduce Response Length                                  │
+│   ────────────────────────────────────                               │
+│   Add max_tokens parameter to limit output:                         │
+│                                                                      │
+│   In src/response/response_generator.py:                            │
+│   ```python                                                          │
+│   self.llm = Llamafile(                                             │
+│       base_url="http://localhost:8081",                             │
+│       seed=seed,                                                    │
+│       max_tokens=150,  # ← Add this (default: unlimited)            │
+│       temperature=0.7                                                │
+│   )                                                                  │
+│   ```                                                                │
+│                                                                      │
+│   Effect: 150 tokens ≈ 50-60s instead of 100s                       │
+│   Trade-off: Shorter answers (usually fine for RAG)                 │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   OPTION 3: Better GPU Utilization                                  │
+│   ────────────────────────────────────                               │
+│   Ensure Llamafile is using Metal properly:                         │
+│                                                                      │
+│   Check current usage:                                               │
+│   ```bash                                                            │
+│   # While query is running, check GPU usage                         │
+│   sudo powermetrics --samplers gpu_power -i 1000 -n 1              │
+│   ```                                                                │
+│                                                                      │
+│   If GPU usage is low:                                              │
+│   • Llamafile might not be using Metal efficiently                  │
+│   • Try different -ngl values: -ngl 32, -ngl 64                     │
+│   • Check Activity Monitor > GPU History during queries             │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   OPTION 4: Reduce Context Sent to LLM                              │
+│   ───────────────────────────────────────────                        │
+│   Currently sending 2 chunks (send_nb_chunks_to_llm: 2)             │
+│                                                                      │
+│   Try sending just 1 chunk:                                          │
+│   Edit process_config.yaml:                                         │
+│   ```yaml                                                            │
+│   retrieval:                                                         │
+│     send_nb_chunks_to_llm: 1  # ← Change from 2 to 1               │
+│   ```                                                                │
+│                                                                      │
+│   Effect: Slightly faster, but may reduce answer quality            │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   OPTION 5: Use Cloud GPU (NOT OFFLINE)                             │
+│   ───────────────────────────────────────────────                    │
+│   If you don't need offline:                                         │
+│   • Groq API: ~1-2s per query (extremely fast)                      │
+│   • OpenAI GPT-3.5: ~3-5s per query                                 │
+│   • Together.ai: ~2-4s per query                                    │
+│                                                                      │
+│   Trade-off: Loses privacy and offline capability                   │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   RECOMMENDED QUICK FIX:                                             │
+│   ═══════════════════════                                            │
+│   1. Add max_tokens=150 to ResponseGenerator                        │
+│   2. Consider switching to Mistral-7B or Phi-3-Mini                 │
+│   3. Keep send_nb_chunks_to_llm at 2 (quality > speed)              │
+│                                                                      │
+│   Expected improvement: 100s → 30-40s                                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Performance Comparison Table
+
+| Setup | Hardware | Retrieval | Rerank | LLM Gen | Total | Notes |
+|-------|----------|-----------|--------|---------|-------|-------|
+| **Current (Mistral-12B)** | M3 MacBook Air | 389ms | 6.7s | 103s | **110s** | What you have now |
+| Mistral-12B + max_tokens | M3 MacBook Air | 389ms | 6.7s | 50s | 57s | Quick fix |
+| Mistral-7B | M3 MacBook Air | 389ms | 6.7s | 35s | 42s | Smaller model |
+| Phi-3-Mini-4K | M3 MacBook Air | 389ms | 6.7s | 20s | 27s | Best balance |
+| TinyLlama-1.1B | M3 MacBook Air | 389ms | 6.7s | 8s | 15s | Fastest, lower quality |
+| Mistral-12B | M3 Pro (12-core GPU) | 389ms | 6.7s | 40s | 47s | Better Mac |
+| Mistral-12B | RTX 4090 | 389ms | 6.7s | 3s | 10s | Desktop GPU |
+| Cloud API (Groq) | Any | 389ms | 6.7s | 2s | 9s | Not offline |
+
+### Real-World Performance Expectations
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│           WHAT'S REALISTIC ON LAPTOP HARDWARE?                       │
+│                                                                      │
+│   Apple M3 MacBook Air (Your Hardware):                             │
+│   ───────────────────────────────────────────                        │
+│   • 8-core CPU, 8-core GPU, 16GB unified memory                     │
+│   • No dedicated VRAM (shares with system RAM)                      │
+│   • Good for: Daily use, light ML workloads                         │
+│   • Not optimized for: Heavy LLM inference                          │
+│                                                                      │
+│   Expected Performance:                                              │
+│   • Mistral-7B: 30-50s per query (acceptable)                       │
+│   • Mistral-12B: 60-120s per query (slow but works)                 │
+│   • Larger models (13B+): 2-5 minutes (impractical)                 │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   For Faster Inference, You'd Need:                                 │
+│   ────────────────────────────────────                               │
+│   • Apple M3 Pro/Max (14-16 core GPU): 2-3x faster                  │
+│   • Desktop NVIDIA GPU (RTX 3080+): 10-20x faster                   │
+│   • Server GPUs (A100/H100): 50-100x faster                         │
+│   • Cloud APIs: Instant (but not offline/private)                   │
+│                                                                      │
+│   ─────────────────────────────────────────────────────────────     │
+│                                                                      │
+│   THE PRIVACY/SPEED TRADE-OFF:                                       │
+│   ────────────────────────────────                                   │
+│                                                                      │
+│   Offline (Current):        Cloud APIs:                             │
+│   • 100% private           • Data leaves your computer              │
+│   • 100% offline           • Requires internet                      │
+│   • Slow (60-120s)         • Fast (2-5s)                           │
+│   • Free after setup       • Pay per query                          │
+│   • Limited by hardware    • Unlimited scale                        │
+│                                                                      │
+│   You chose privacy → slower is expected and normal!                │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Monitoring Tools
+
+**Check real-time performance:**
+
+1. **Metrics Dashboard**: `http://localhost:5173/metrics`
+   - Query lifecycle breakdown
+   - Retrieval, rerank, LLM times
+   - Updated after each query
+
+2. **System Monitor**:
+   ```bash
+   # CPU/GPU usage while query runs
+   top
+   
+   # GPU usage (macOS)
+   sudo powermetrics --samplers gpu_power
+   ```
+
+3. **Llamafile Logs**:
+   - Terminal 1 shows token generation in real-time
+   - Look for "generated X tokens in Y seconds"
+
+4. **API Logs**:
+   - Terminal 2 shows request/response times
+   - Look for "Query processing took X seconds"
+
+---
+
 RagVault isn't just a black box. It includes an "SRE-grade" observability stack based on **Prometheus** to track performance and a detailed history audit log.
 
 ### Operational Metrics Architecture

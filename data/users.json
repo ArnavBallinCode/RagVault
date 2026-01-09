@@ -1,0 +1,20 @@
+{
+  "admin": {
+    "username": "admin",
+    "hashed_password": "$2b$12$kzp3pGTfEiCyx7IXjtXO2OXiSkeeepKMPXoTDTPhreJmpjq4ntJeS",
+    "role": "admin",
+    "name": "Administrator",
+    "departments": [
+      "*"
+    ]
+  },
+  "user": {
+    "username": "user",
+    "hashed_password": "$2b$12$Y.04zHt8ojdtZL9gQ03UMeDQrg3.ONjsy8ULZVKp68TbafVR5mgOq",
+    "role": "user",
+    "name": "Standard User",
+    "departments": [
+      "general"
+    ]
+  }
+}
