@@ -1656,15 +1656,13 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
         return; // If health fails, don't try documents
       }
 
-      // Documents require admin role - only fetch if admin
-      if (user.role === 'admin') {
-        try {
-          const d = await api.getDocuments();
-          setDocuments(d);
-        } catch {
-          // Documents fetch failed, but backend is still online
-          console.warn('Could not fetch documents');
-        }
+      // Documents - all users can fetch (API filters by department)
+      try {
+        const d = await api.getDocuments();
+        setDocuments(d);
+      } catch {
+        // Documents fetch failed, but backend is still online
+        console.warn('Could not fetch documents');
       }
     };
     fetchData();
