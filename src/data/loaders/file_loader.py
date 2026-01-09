@@ -16,6 +16,7 @@ from langchain_community.document_loaders.parsers.language.language_parser impor
 from .base import BaseLoader
 from docling.document_converter import DocumentConverter
 from .file_converter import OfficeConverter
+from .ocr_loader import get_ocr_loader, OCRLoader
 from bs4 import BeautifulSoup
 import re
 import os
@@ -139,6 +140,14 @@ class FileLoader(BaseLoader):
             # Email
             '.eml': UnstructuredEmailLoader,
             '.msg': UnstructuredEmailLoader,
+            
+            # Image Files (OCR)
+            '.png': self._load_image,
+            '.jpg': self._load_image,
+            '.jpeg': self._load_image,
+            '.tiff': self._load_image,
+            '.tif': self._load_image,
+            '.bmp': self._load_image,
             
             # Jupyter Notebooks
             '.ipynb': self._load_jupyter_notebook,
@@ -351,6 +360,54 @@ class FileLoader(BaseLoader):
             
         except Exception as e:
             self.logger.error(f"Error loading File {file_path}: {str(e)}")
+            raise
+
+    def _load_image(self, file_path: str) -> List[Document]:
+        """
+        Load image files using OCR to extract text.
+        
+        Args:
+            file_path (str): Path to the image file (PNG, JPG, etc.)
+            
+        Returns:
+            List[Document]: List containing the OCR-extracted document
+            
+        Raises:
+            Exception: If any error occurs during OCR
+        """
+        try:
+            self.logger.info(f"Running OCR on image: {file_path}")
+            
+            # Get OCR loader
+            ocr = get_ocr_loader()
+            
+            if not ocr.is_available:
+                raise RuntimeError("No OCR backend available. Install paddleocr or pytesseract.")
+            
+            # Extract text using OCR
+            text = ocr.ocr_image(file_path)
+            
+            if not text.strip():
+                self.logger.warning(f"No text extracted from image: {file_path}")
+                text = "[No text detected in image]"
+            
+            metadata = {
+                "source": file_path,
+                "ocr": True,
+                "ocr_backend": ocr.backend,
+                "is_image": True
+            }
+            
+            document = Document(
+                page_content=text,
+                metadata=metadata
+            )
+            
+            self.logger.info(f"OCR extracted {len(text)} characters from {file_path}")
+            return [document]
+            
+        except Exception as e:
+            self.logger.error(f"Error OCR loading image {file_path}: {str(e)}")
             raise
 
     def _load_pdf_or_markdonw(self, file_path: str) -> List[Document]:

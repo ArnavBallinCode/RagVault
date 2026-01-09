@@ -279,16 +279,16 @@ async def upload_document(
 ):
     """
     Upload a document to the system
-    Supported formats: PDF, DOCX, TXT, DOC, MD
-    Requires department assignment
+    Supported formats: PDF, DOCX, TXT, DOC, MD, PNG, JPG, JPEG, TIFF, BMP
+    Images are processed via OCR. Requires department assignment.
     """
     try:
         with metrics.time_request("/upload", "POST"):
             # Validate department
             validate_department(department)
             
-            # Validate file extension
-            allowed_extensions = {'.pdf', '.docx', '.txt', '.doc', '.md'}
+            # Validate file extension (including images for OCR)
+            allowed_extensions = {'.pdf', '.docx', '.txt', '.doc', '.md', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp'}
             file_ext = os.path.splitext(file.filename)[1].lower()
             
             if file_ext not in allowed_extensions:
