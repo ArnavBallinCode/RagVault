@@ -69,7 +69,8 @@ class DataIngestion:
         # Auto-scan data/uploads/ directory for all supported files
         uploads_dir = "data/uploads"
         if os.path.exists(uploads_dir):
-            supported_extensions = ['.pdf', '.docx', '.txt', '.doc', '.md']
+            # Include image files for OCR processing
+            supported_extensions = ['.pdf', '.docx', '.txt', '.doc', '.md', '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp']
             for filename in os.listdir(uploads_dir):
                 file_path = os.path.join(uploads_dir, filename)
                 if os.path.isfile(file_path):
