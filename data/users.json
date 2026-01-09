@@ -8,12 +8,55 @@
       "*"
     ]
   },
-  "user": {
-    "username": "user",
-    "hashed_password": "$2b$12$Y.04zHt8ojdtZL9gQ03UMeDQrg3.ONjsy8ULZVKp68TbafVR5mgOq",
+  "alice": {
+    "username": "alice",
+    "hashed_password": "$2b$12$N1B/zVVaBMSTACzqrBrFjOTDT4ry5UbN1wR8rUdb57Fwk2m1igOXy",
     "role": "user",
-    "name": "Standard User",
+    "name": "Alice (Finance)",
     "departments": [
+      "finance",
+      "general"
+    ]
+  },
+  "bob": {
+    "username": "bob",
+    "hashed_password": "$2b$12$OijL6YPgo9PIUCl4ipz4ceW2xM6izVK.VVSPov7hZZ7kHpavFW1JW",
+    "role": "user",
+    "name": "Bob (HR)",
+    "departments": [
+      "hr",
+      "general"
+    ]
+  },
+  "charlie": {
+    "username": "charlie",
+    "hashed_password": "$2b$12$g9Gvep0pD2gqboGqQ63xx.jcrXQOcCle.1YUw1xG.31PLBZWEdITq",
+    "role": "user",
+    "name": "Charlie (Engineering)",
+    "departments": [
+      "engineering",
+      "product",
+      "general"
+    ]
+  },
+  "diana": {
+    "username": "diana",
+    "hashed_password": "$2b$12$AVae5hNzQZWSgi6mRVZgZuxrJ/yp7.vZ2kvnNPEjVFhS7rlFTPv.O",
+    "role": "user",
+    "name": "Diana (Legal)",
+    "departments": [
+      "legal",
+      "general"
+    ]
+  },
+  "eve": {
+    "username": "eve",
+    "hashed_password": "$2b$12$p7J8jG3u.Xix9Pe2aVdT6ueC3//NWmFaL4w1MQx34ekzoHfH2aFje",
+    "role": "user",
+    "name": "Eve (Sales & Ops)",
+    "departments": [
+      "sales",
+      "operations",
       "general"
     ]
   }

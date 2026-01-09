@@ -64,7 +64,7 @@ const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () =
   const allNavItems = [
     { path: '/', icon: LayoutDashboard, label: 'Pipeline', adminOnly: true },
     { path: '/chat', icon: MessageCircle, label: 'Chat', adminOnly: false },
-    { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: true },
+    { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: false },
     { path: '/metrics', icon: BarChart3, label: 'Metrics', adminOnly: true },
     { path: '/history', icon: Clock, label: 'History', adminOnly: true },
     { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
@@ -147,13 +147,30 @@ const Breadcrumb = () => {
 
 const UploadNode = ({ data }: { data: any }) => {
   const [dragOver, setDragOver] = useState(false);
+  const [selectedDept, setSelectedDept] = useState('general');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const departments = [
+    { value: 'general', label: 'General (All Users)' },
+    { value: 'finance', label: 'Finance' },
+    { value: 'hr', label: 'HR' },
+    { value: 'engineering', label: 'Engineering' },
+    { value: 'product', label: 'Product' },
+    { value: 'legal', label: 'Legal' },
+    { value: 'operations', label: 'Operations' },
+    { value: 'sales', label: 'Sales' },
+  ];
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) data.onUpload(file);
+    if (file) data.onUpload(file, selectedDept);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) data.onUpload(file, selectedDept);
   };
 
   return (
@@ -163,6 +180,28 @@ const UploadNode = ({ data }: { data: any }) => {
       <div className="node-content-area">
         <h3>Data</h3>
         <p className="node-subtitle">Document Upload</p>
+
+        {/* Department Selector */}
+        <select
+          value={selectedDept}
+          onChange={(e) => setSelectedDept(e.target.value)}
+          className="dept-selector"
+          style={{
+            width: '100%',
+            padding: '6px 8px',
+            marginBottom: '8px',
+            borderRadius: '6px',
+            border: '1px solid var(--border-color)',
+            background: 'var(--card-bg)',
+            color: 'var(--text-primary)',
+            fontSize: '12px',
+            cursor: 'pointer'
+          }}
+        >
+          {departments.map(d => (
+            <option key={d.value} value={d.value}>{d.label}</option>
+          ))}
+        </select>
 
         <div
           className={`node-dropzone ${dragOver ? 'dragover' : ''} ${data.status}`}
@@ -176,7 +215,7 @@ const UploadNode = ({ data }: { data: any }) => {
             type="file"
             accept=".pdf,.docx,.txt,.md"
             style={{ display: 'none' }}
-            onChange={(e) => e.target.files?.[0] && data.onUpload(e.target.files[0])}
+            onChange={handleFileSelect}
           />
 
           {data.status === 'idle' && <FileUp size={24} />}
@@ -1601,12 +1640,15 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
     return () => clearInterval(interval);
   }, [user.role]);
 
-  const handleUpload = useCallback(async (file: File) => {
+  const handleUpload = useCallback(async (file: File, department: string = 'general') => {
     setUploadStatus('uploading');
     try {
-      const res = await api.uploadDocument(file, 'general');
+      const res = await api.uploadDocument(file, department);
       setUploadStatus('success');
       setUploadFilename(res.filename);
+      // Refresh documents list after upload
+      const d = await api.getDocuments();
+      setDocuments(d);
     } catch {
       setUploadStatus('error');
     }
@@ -1723,26 +1765,28 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               onRefresh={handleRefresh}
             />
           } />
+          {/* Documents page accessible to all users (filtered by department) */}
+          <Route path="/documents" element={
+            <DocumentsPage
+              documents={documents}
+              isOnline={isOnline}
+              onRefresh={handleRefresh}
+              onDocumentsChange={async () => {
+                const d = await api.getDocuments();
+                setDocuments(d);
+                try {
+                  const h = await api.health();
+                  setHealth(h);
+                  setIsOnline(h.status === 'healthy');
+                } catch {
+                  setIsOnline(false);
+                }
+              }}
+            />
+          } />
+          {/* Admin-only routes */}
           {user.role === 'admin' ? (
             <>
-              <Route path="/documents" element={
-                <DocumentsPage
-                  documents={documents}
-                  isOnline={isOnline}
-                  onRefresh={handleRefresh}
-                  onDocumentsChange={async () => {
-                    const d = await api.getDocuments();
-                    setDocuments(d);
-                    try {
-                      const h = await api.health();
-                      setHealth(h);
-                      setIsOnline(h.status === 'healthy');
-                    } catch {
-                      setIsOnline(false);
-                    }
-                  }}
-                />
-              } />
               <Route path="/metrics" element={<MetricsPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/models" element={<LLMPage />} />
@@ -1750,7 +1794,6 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
             </>
           ) : (
             <>
-              <Route path="/documents" element={<Navigate to="/chat" replace />} />
               <Route path="/models" element={<Navigate to="/chat" replace />} />
               <Route path="/settings" element={<Navigate to="/chat" replace />} />
               <Route path="/" element={<Navigate to="/chat" replace />} />
