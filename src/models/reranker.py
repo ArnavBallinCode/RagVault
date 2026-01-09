@@ -77,20 +77,29 @@ class Reranker:
         """
         Initialize the transformer model and tokenizer.
         
-        Loads the specified model and tokenizer from HuggingFace,
+        Loads the specified model and tokenizer from HuggingFace or local path,
         moves them to the appropriate device, and sets evaluation mode.
         
         Raises:
             Exception: If model loading or initialization fails
             
         Note:
-            - Downloads model if not cached
+            - Uses local_files_only for offline operation
             - Sets model to evaluation mode
             - Logs successful initialization
         """
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
-            self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name, trust_remote_code=True)
+            # Use local_files_only for offline operation
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name, 
+                trust_remote_code=True,
+                local_files_only=True
+            )
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                self.model_name, 
+                trust_remote_code=True,
+                local_files_only=True
+            )
             self.model.to(self.device)
             self.model.eval()
             

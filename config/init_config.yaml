@@ -6,8 +6,8 @@ logging:
   console_logging: true
 
 model:
-  embedding_model_hf: "nomic-ai/nomic-embed-text-v1.5"
-  rerank_model: "BAAI/bge-reranker-v2-m3"
+  embedding_model_hf: "./models/nomic-embed-text-v1.5"  # Local offline model (was: nomic-ai/nomic-embed-text-v1.5)
+  rerank_model: "./models/bge-reranker-v2-m3"  # Local offline model (was: BAAI/bge-reranker-v2-m3)
   device_rerank: "mps"  # Use Apple Metal Performance Shaders for M-series Macs
 
 ingestion : 
@@ -48,5 +48,3 @@ files:
     - "data/raw/data.txt"
     # All files in data/uploads/ are automatically scanned
     # - "data/raw/742762880-Matter-1-3-Core-Specification.pdf"  # Temporarily disabled - causes crash on macOS
-
-    
