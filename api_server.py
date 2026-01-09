@@ -3,6 +3,11 @@ RagVault REST API Server
 Production-grade API with RBAC and Prometheus metrics
 """
 
+# Force HuggingFace to use only locally cached models (100% offline mode)
+import os
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -47,13 +52,7 @@ app = FastAPI(title="RagVault API", version="2.0")
 # Add CORS middleware for frontend connection
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://10.0.15.40:5173",
-        "https://better-dashing-rattler.ngrok-free.app",
-        "https://*.ngrok-free.app"
-    ],
+    allow_origins=["*"],  # Allow all origins for local development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -187,27 +186,56 @@ async def query(
         with metrics.time_request("/query", "POST"):
             logger.info(f"Processing query from {user.username}: {request.query}")
             
+            # Get user's accessible departments
+            accessible_depts = get_user_accessible_departments(user)
+            logger.info(f"User {user.username} has access to departments: {accessible_depts}")
+            
             # Retrieve documents
             with metrics.time_retrieval():
                 retrieved_results = rag_components.retriever.retrieve_with_method(
                     request.query,
                     method="hybrid",
-                    top_k=rag_components.process_config['retrieval']['top_k']
+                    top_k=rag_components.process_config['retrieval']['top_k'] * 3  # Get more results to filter
                 )
             
-            logger.info(f"Retrieved {len(retrieved_results)} documents")
+            logger.info(f"Retrieved {len(retrieved_results)} documents before filtering")
+            
+            # Filter documents by user's department access
+            filtered_results = []
+            for result in retrieved_results:
+                source = result.document.metadata.get('source', '')
+                # Extract filename from path
+                filename = os.path.basename(source)
+                doc_department = document_metadata.get_department(filename)
+                
+                if doc_department in accessible_depts:
+                    filtered_results.append(result)
+                else:
+                    logger.debug(f"Filtered out document {filename} (dept: {doc_department}) - user has no access")
+            
+            logger.info(f"After department filtering: {len(filtered_results)} documents for user {user.username}")
+            
+            # If no documents accessible, return appropriate message
+            if not filtered_results:
+                logger.warning(f"No accessible documents for user {user.username}")
+                return QueryResponse(
+                    query=request.query,
+                    answer="No documents found in your accessible departments. Please contact admin to get access to relevant documents.",
+                    sources=[],
+                    timestamp=datetime.now().isoformat()
+                )
             
             # Rerank if configured
             if rag_components.process_config['retrieval']['use_reranking']:
                 with metrics.time_rerank():
                     reranked_results = rag_components.reranker.rerank(
                         request.query,
-                        [r.document for r in retrieved_results],
+                        [r.document for r in filtered_results],
                         top_k=request.top_k
                     )
                 relevant_docs = [r.document for r in reranked_results]
             else:
-                relevant_docs = [r.document for r in retrieved_results[:request.top_k]]
+                relevant_docs = [r.document for r in filtered_results[:request.top_k]]
             
             # Generate response
             with metrics.time_llm():

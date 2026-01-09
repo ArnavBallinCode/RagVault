@@ -49,6 +49,7 @@ import {
   MessageCircle,
   Send,
   Clock,
+  Users,
 } from 'lucide-react';
 
 import { api } from './api/client';
@@ -65,6 +66,7 @@ const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () =
     { path: '/', icon: LayoutDashboard, label: 'Pipeline', adminOnly: true },
     { path: '/chat', icon: MessageCircle, label: 'Chat', adminOnly: false },
     { path: '/documents', icon: FolderOpen, label: 'Documents', adminOnly: false },
+    { path: '/users', icon: Users, label: 'User Management', adminOnly: true },
     { path: '/metrics', icon: BarChart3, label: 'Metrics', adminOnly: true },
     { path: '/history', icon: Clock, label: 'History', adminOnly: true },
     { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
@@ -1224,6 +1226,395 @@ const ConfigPage = () => (
 );
 
 // ============================================================================
+// USER MANAGEMENT PAGE (Admin Only)
+// ============================================================================
+
+interface UserData {
+  username: string;
+  name: string;
+  role: string;
+  departments: string[];
+}
+
+const UsersPage = () => {
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [availableDepts, setAvailableDepts] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [editDepts, setEditDepts] = useState<string[]>([]);
+
+  const fetchUsers = useCallback(async () => {
+    try {
+      const data = await api.getUsers();
+      setUsers(data.users);
+      setAvailableDepts(data.available_departments);
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const startEditing = (user: UserData) => {
+    setEditingUser(user.username);
+    setEditDepts([...user.departments]);
+  };
+
+  const cancelEditing = () => {
+    setEditingUser(null);
+    setEditDepts([]);
+  };
+
+  const toggleDept = (dept: string) => {
+    if (editDepts.includes(dept)) {
+      setEditDepts(editDepts.filter(d => d !== dept));
+    } else {
+      setEditDepts([...editDepts, dept]);
+    }
+  };
+
+  const saveChanges = async (username: string) => {
+    setSaving(username);
+    try {
+      await api.updateUserDepartments(username, editDepts);
+      await fetchUsers();
+      setEditingUser(null);
+    } catch (err) {
+      console.error('Failed to update user:', err);
+      alert('Failed to update user departments');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const roleColors: Record<string, string> = {
+    admin: '#ef4444',
+    user: '#3b82f6',
+  };
+
+  const deptColors: Record<string, string> = {
+    finance: '#10b981',
+    hr: '#8b5cf6',
+    engineering: '#3b82f6',
+    product: '#f59e0b',
+    legal: '#ef4444',
+    operations: '#06b6d4',
+    sales: '#ec4899',
+    general: '#6b7280',
+    '*': '#fbbf24'
+  };
+
+  if (loading) {
+    return (
+      <div className="page-content">
+        <div className="loading-state">
+          <Loader2 size={32} className="spin" />
+          <p>Loading users...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <h1>User Management</h1>
+          <p>Manage user permissions and department access</p>
+        </div>
+        <button className="btn-primary" onClick={fetchUsers}>
+          <RefreshCw size={16} /> Refresh
+        </button>
+      </div>
+
+      <div className="stats-grid">
+        <div className="stat-card">
+          <Users size={24} />
+          <div>
+            <span className="stat-value">{users.length}</span>
+            <span className="stat-label">Total Users</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <Shield size={24} />
+          <div>
+            <span className="stat-value">{users.filter(u => u.role === 'admin').length}</span>
+            <span className="stat-label">Admins</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <FolderOpen size={24} />
+          <div>
+            <span className="stat-value">{availableDepts.length}</span>
+            <span className="stat-label">Departments</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="users-table">
+        <div className="table-header">
+          <span>User</span>
+          <span>Role</span>
+          <span>Departments</span>
+          <span>Actions</span>
+        </div>
+        {users.map(user => (
+          <div key={user.username} className="table-row">
+            <div className="user-info">
+              <div className="user-avatar">{user.name.charAt(0).toUpperCase()}</div>
+              <div>
+                <span className="user-name">{user.name}</span>
+                <span className="user-username">@{user.username}</span>
+              </div>
+            </div>
+            <span
+              className="role-badge"
+              style={{
+                backgroundColor: roleColors[user.role] || '#6b7280',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: '9999px',
+                fontSize: '12px',
+                fontWeight: 600,
+                textTransform: 'uppercase'
+              }}
+            >
+              {user.role}
+            </span>
+            <div className="dept-list">
+              {editingUser === user.username ? (
+                <div className="dept-editor">
+                  {availableDepts.map(dept => (
+                    <label
+                      key={dept}
+                      className={`dept-checkbox ${editDepts.includes(dept) ? 'selected' : ''}`}
+                      style={{
+                        borderColor: editDepts.includes(dept) ? deptColors[dept] || '#6b7280' : 'transparent',
+                        backgroundColor: editDepts.includes(dept) ? `${deptColors[dept]}20` : 'var(--card-bg)'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editDepts.includes(dept)}
+                        onChange={() => toggleDept(dept)}
+                      />
+                      <span style={{ color: deptColors[dept] || '#6b7280' }}>{dept}</span>
+                    </label>
+                  ))}
+                  {user.role !== 'admin' && (
+                    <label
+                      className={`dept-checkbox ${editDepts.includes('*') ? 'selected' : ''}`}
+                      style={{
+                        borderColor: editDepts.includes('*') ? '#fbbf24' : 'transparent',
+                        backgroundColor: editDepts.includes('*') ? '#fbbf2420' : 'var(--card-bg)'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editDepts.includes('*')}
+                        onChange={() => toggleDept('*')}
+                      />
+                      <span style={{ color: '#fbbf24' }}>* (All)</span>
+                    </label>
+                  )}
+                </div>
+              ) : (
+                <div className="dept-tags">
+                  {user.departments.map(dept => (
+                    <span
+                      key={dept}
+                      className="dept-tag"
+                      style={{
+                        backgroundColor: deptColors[dept] || '#6b7280',
+                        color: 'white'
+                      }}
+                    >
+                      {dept === '*' ? 'All Departments' : dept}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="user-actions">
+              {editingUser === user.username ? (
+                <>
+                  <button
+                    className="btn-success"
+                    onClick={() => saveChanges(user.username)}
+                    disabled={saving === user.username}
+                  >
+                    {saving === user.username ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                    Save
+                  </button>
+                  <button className="btn-secondary" onClick={cancelEditing}>
+                    <X size={14} /> Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn-primary"
+                  onClick={() => startEditing(user)}
+                  disabled={user.role === 'admin' && user.username === 'admin'}
+                  title={user.role === 'admin' && user.username === 'admin' ? 'Cannot modify root admin' : 'Edit departments'}
+                >
+                  <Settings size={14} /> Edit
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <style>{`
+        .users-table {
+          background: var(--card-bg);
+          border-radius: 12px;
+          overflow: hidden;
+          border: 1px solid var(--border-color);
+        }
+        .users-table .table-header {
+          display: grid;
+          grid-template-columns: 2fr 1fr 3fr 1.5fr;
+          padding: 16px 20px;
+          background: rgba(255,255,255,0.02);
+          border-bottom: 1px solid var(--border-color);
+          font-weight: 600;
+          font-size: 12px;
+          text-transform: uppercase;
+          color: var(--text-secondary);
+        }
+        .users-table .table-row {
+          display: grid;
+          grid-template-columns: 2fr 1fr 3fr 1.5fr;
+          padding: 16px 20px;
+          align-items: center;
+          border-bottom: 1px solid var(--border-color);
+          transition: background 0.2s;
+        }
+        .users-table .table-row:last-child {
+          border-bottom: none;
+        }
+        .users-table .table-row:hover {
+          background: rgba(255,255,255,0.02);
+        }
+        .user-info {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        .user-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #8b5cf6, #6366f1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 16px;
+          color: white;
+        }
+        .user-info > div {
+          display: flex;
+          flex-direction: column;
+        }
+        .user-name {
+          font-weight: 500;
+          color: var(--text-primary);
+        }
+        .user-username {
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .dept-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .dept-tags {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .dept-tag {
+          padding: 4px 10px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .dept-editor {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .dept-checkbox {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 2px solid transparent;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        }
+        .dept-checkbox input {
+          display: none;
+        }
+        .dept-checkbox:hover {
+          background: rgba(255,255,255,0.05);
+        }
+        .user-actions {
+          display: flex;
+          gap: 8px;
+        }
+        .user-actions button {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-success {
+          background: #10b981;
+          color: white;
+          border: none;
+        }
+        .btn-success:hover {
+          background: #059669;
+        }
+        .btn-secondary {
+          background: var(--card-bg);
+          color: var(--text-secondary);
+          border: 1px solid var(--border-color);
+        }
+        .btn-secondary:hover {
+          background: rgba(255,255,255,0.05);
+        }
+        .loading-state {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 300px;
+          gap: 16px;
+          color: var(--text-secondary);
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// ============================================================================
 // HISTORY PAGE (Admin Only)
 // ============================================================================
 
@@ -1814,6 +2205,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
           {/* Admin-only routes */}
           {user.role === 'admin' ? (
             <>
+              <Route path="/users" element={<UsersPage />} />
               <Route path="/metrics" element={<MetricsPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/models" element={<LLMPage />} />

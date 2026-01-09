@@ -119,7 +119,11 @@ class VectorRetriever:
             self.logger.info("Using CPU for embeddings")
         
         # Initialize HuggingFace embeddings model
-        model_kwargs = {'device': device, 'trust_remote_code': True}
+        model_kwargs = {
+            'device': device, 
+            'trust_remote_code': True,
+            'local_files_only': True  # Force offline mode - use only cached models
+        }
         encode_kwargs = {'normalize_embeddings': True, 'batch_size': self.batch_size}
         self.model_embeddings_hf = HuggingFaceEmbeddings(
             model_name=self.embedding_model_name_hf,

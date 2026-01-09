@@ -5,6 +5,10 @@ logging:
   file_logging: true
   console_logging: true
 
+# Offline mode is now enabled - models use local cache only
+# To download models initially, run the system once while connected to internet
+offline_mode: true
+
 model:
   embedding_model_hf: "./models/nomic-embed-text-v1.5"  # Local offline model (was: nomic-ai/nomic-embed-text-v1.5)
   rerank_model: "./models/bge-reranker-v2-m3"  # Local offline model (was: BAAI/bge-reranker-v2-m3)
