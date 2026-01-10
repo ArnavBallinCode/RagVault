@@ -10,7 +10,7 @@ os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 from pydantic import BaseModel
 import uvicorn
 import os
@@ -24,6 +24,7 @@ import json
 HISTORY_FILE = "data/query_history.json"
 
 from initialize_rag import RAGInitializer
+from src.utils.chunk_extractor import extract_query_focused_content
 
 # Auth & RBAC imports
 from auth import (
@@ -82,10 +83,19 @@ class QueryRequest(BaseModel):
     query: str
     top_k: int = 2
 
+class SourceDetail(BaseModel):
+    """Detailed source information for evidence pop-ups with precision extraction"""
+    filename: str
+    pages: Optional[str] = None  # e.g., "1, 3, 5" or None if no page metadata
+    focused_content: str  # Query-relevant content only (precision extracted)
+    matched_entities: List[str] = []  # Entities matched for highlighting
+    department: str
+
 class QueryResponse(BaseModel):
     query: str
     answer: str
-    sources: List[str]
+    sources: List[str]  # Backward compatibility
+    source_details: Optional[List[SourceDetail]] = None  # Detailed source info for pop-ups
     timestamp: str
 
 @app.on_event("startup")
@@ -245,8 +255,57 @@ async def query(
                     metadata={}
                 )
             
-            # Extract sources
+            # Extract sources (backward compatibility)
             sources = [doc.metadata.get('source', 'unknown') for doc in relevant_docs]
+            
+            # Build detailed source info for pop-ups (deduplicated by filename)
+            source_map = {}  # filename -> {pages: set, chunks: list, dept: str}
+            for doc in relevant_docs:
+                source_path = doc.metadata.get('source', 'unknown')
+                filename = os.path.basename(source_path)
+                page = doc.metadata.get('page') or doc.metadata.get('page_number')
+                # Store full chunk for precision extraction
+                chunk_content = doc.page_content
+                dept = document_metadata.get_department(filename)
+                
+                if filename not in source_map:
+                    source_map[filename] = {
+                        'pages': set(),
+                        'chunks': [],
+                        'department': dept
+                    }
+                
+                if page is not None:
+                    source_map[filename]['pages'].add(int(page))
+                source_map[filename]['chunks'].append(chunk_content)
+            
+            # Convert to SourceDetail list with precision extraction (one per document)
+            source_details = []
+            for filename, data in source_map.items():
+                # Format pages like "1, 3, 5" or None
+                pages_str = None
+                if data['pages']:
+                    sorted_pages = sorted(data['pages'])
+                    pages_str = ', '.join(str(p) for p in sorted_pages)
+                
+                # Combine all chunks from this document for extraction
+                combined_raw = '\n\n'.join(data['chunks'][:3])  # Max 3 chunks per doc
+                
+                # Apply precision extraction - get only query-relevant content
+                focused_content, matched_entities = extract_query_focused_content(
+                    query=request.query,
+                    chunk=combined_raw,
+                    max_sentences=3,
+                    min_score_threshold=0.12
+                )
+                
+                source_details.append(SourceDetail(
+                    filename=filename,
+                    pages=pages_str,
+                    focused_content=focused_content,
+                    matched_entities=matched_entities,
+                    department=data['department']
+                ))
             
             metrics.record_query(user.role.value, "success")
             
@@ -264,6 +323,7 @@ async def query(
                 query=request.query,
                 answer=response_data['response'],
                 sources=list(set(sources)),
+                source_details=source_details,
                 timestamp=datetime.now().isoformat()
             )
     
@@ -872,6 +932,116 @@ async def list_departments(user: UserInDB = Depends(require_any_authenticated)):
         "user_departments": accessible,
         "shared_department": "general"
     }
+
+
+# ============================================================================
+# DOCUMENT VIEW/DOWNLOAD - Role-Based Access
+# ============================================================================
+
+def check_document_access(filename: str, user: UserInDB) -> bool:
+    """Check if user can access document based on department."""
+    # Admin has full access
+    if user.role.value == "admin":
+        return True
+    
+    # Get document department
+    doc_dept = document_metadata.get_department(filename)
+    
+    # Get user's accessible departments
+    accessible_depts = get_user_accessible_departments(user)
+    
+    # Check if wildcard access or department match
+    if "*" in accessible_depts:
+        return True
+    
+    # General department is accessible to all authenticated users
+    if doc_dept == "general":
+        return True
+    
+    return doc_dept in accessible_depts
+
+
+@app.get("/documents/{filename}/view")
+async def view_document(
+    filename: str,
+    user: UserInDB = Depends(require_any_authenticated)
+):
+    """Stream document for inline viewing (role-based access)"""
+    try:
+        file_path = os.path.join("data/uploads", filename)
+        
+        # Check file exists
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"Document '{filename}' not found")
+        
+        # Check access permission
+        if not check_document_access(filename, user):
+            raise HTTPException(
+                status_code=403, 
+                detail="You don't have permission to view this document"
+            )
+        
+        # Determine content type
+        content_type = "application/octet-stream"
+        if filename.lower().endswith('.pdf'):
+            content_type = "application/pdf"
+        elif filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            ext = filename.lower().split('.')[-1]
+            content_type = f"image/{ext if ext != 'jpg' else 'jpeg'}"
+        elif filename.lower().endswith('.txt'):
+            content_type = "text/plain"
+        elif filename.lower().endswith('.md'):
+            content_type = "text/markdown"
+        
+        logger.info(f"User {user.username} viewing document: {filename}")
+        
+        return FileResponse(
+            file_path,
+            media_type=content_type,
+            filename=filename,
+            headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error viewing document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/documents/{filename}/download")
+async def download_document(
+    filename: str,
+    user: UserInDB = Depends(require_any_authenticated)
+):
+    """Download document as attachment (role-based access)"""
+    try:
+        file_path = os.path.join("data/uploads", filename)
+        
+        # Check file exists
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"Document '{filename}' not found")
+        
+        # Check access permission
+        if not check_document_access(filename, user):
+            raise HTTPException(
+                status_code=403, 
+                detail="You don't have permission to download this document"
+            )
+        
+        logger.info(f"User {user.username} downloading document: {filename}")
+        
+        return FileResponse(
+            file_path,
+            filename=filename,
+            headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================

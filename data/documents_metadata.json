@@ -94,5 +94,95 @@
     "department": "general",
     "uploaded_at": "2026-01-09T17:13:38.671454",
     "uploaded_by": "admin"
+  },
+  "letter.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T19:17:19.748366",
+    "uploaded_by": "admin"
+  },
+  "Edge AI Systems Design Syllabus 2.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T19:48:40.337589",
+    "uploaded_by": "admin"
+  },
+  "Causal Inference ChinmayanandaA 2.pdf": {
+    "department": "hr",
+    "uploaded_at": "2026-01-10T04:47:23.851031",
+    "uploaded_by": "admin"
+  },
+  "Time Series Forecasting Nataraj (1).pdf": {
+    "department": "finance",
+    "uploaded_at": "2026-01-10T04:46:24.605565",
+    "uploaded_by": "admin"
+  },
+  "ADHAAR CARD 1.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T20:40:44.211020",
+    "uploaded_by": "admin"
+  },
+  "Screenshot 2026-01-10 at 3.36.04\u202fAM.png": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T22:06:08.035035",
+    "uploaded_by": "admin"
+  },
+  "Screenshot 2026-01-10 at 3.37.40\u202fAM.png": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T22:07:46.462425",
+    "uploaded_by": "admin"
+  },
+  "24BCS077 week 2.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T22:12:01.078991",
+    "uploaded_by": "admin"
+  },
+  "phdMtech_22122025.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T04:53:40.504768",
+    "uploaded_by": "admin"
+  },
+  "UAV GNC Project Development Guide (1).docx": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T23:04:45.644554",
+    "uploaded_by": "admin"
+  },
+  "sample.txt": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T23:16:56.896012",
+    "uploaded_by": "admin"
+  },
+  "marksheet.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-09T23:24:27.691268",
+    "uploaded_by": "admin"
+  },
+  "FEE_2024-25_Sheet1.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T03:15:43.682332",
+    "uploaded_by": "admin"
+  },
+  "Fee_Structure_2025-26 (1).pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T03:15:50.325544",
+    "uploaded_by": "admin"
+  },
+  "2025_DBMS_4_Credits.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T04:13:43.649876",
+    "uploaded_by": "admin"
+  },
+  "2024_DBMS_5_Credits.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T04:13:51.260908",
+    "uploaded_by": "admin"
+  },
+  "2025_Courses_DBMS_4_Credits.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T04:38:51.371924",
+    "uploaded_by": "admin"
+  },
+  "2024_Courses_DBMS_5_Credits.pdf": {
+    "department": "general",
+    "uploaded_at": "2026-01-10T04:38:56.018448",
+    "uploaded_by": "admin"
   }
 }

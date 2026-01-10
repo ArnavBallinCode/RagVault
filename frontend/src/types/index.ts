@@ -62,10 +62,19 @@ export interface QueryRequest {
     top_k: number;
 }
 
+export interface SourceDetail {
+    filename: string;
+    pages: string | null;  // e.g., "1, 3, 5" or null
+    focused_content: string;  // Query-relevant content only (precision extracted)
+    matched_entities: string[];  // Entities matched for highlighting
+    department: string;
+}
+
 export interface QueryResponse {
     query: string;
     answer: string;
     sources: string[];
+    source_details?: SourceDetail[];
     timestamp: string;
 }
 
