@@ -145,7 +145,7 @@ focused_content, entities = extract_query_focused_content(
 
 **Technical Implementation:**
 1. Sentence tokenization with abbreviation handling
-2. Query entity extraction (proper nouns, quoted terms)
+2. Query entity extraction (proper nouns, quoted terms) 
 3. Semantic scoring per sentence against query
 4. Top-k sentence selection with highlighting
 
@@ -219,6 +219,58 @@ focused_content, entities = extract_query_focused_content(
 # API:       http://localhost:8000
 # LLM:       http://localhost:8080
 ```
+
+---
+
+## 💻 Single-Machine, Zero-Dependency Deployment
+
+> **Everything runs on ONE laptop. No Kubernetes. No Docker. No cloud. No external servers.**
+
+Unlike enterprise RAG solutions that require distributed infrastructure, RagVault runs **entirely on a single machine**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      SINGLE MACHINE DEPLOYMENT                              │
+│                      (Your Laptop / Workstation)                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  Process 1: React Frontend (npm run dev)           Port 5173       │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  Process 2: FastAPI Backend (uvicorn)              Port 8000       │   │
+│   │    ├── Embedding Model (Nomic, in-process)                         │   │
+│   │    ├── Reranker Model (BGE, in-process)                            │   │
+│   │    ├── FAISS Vector Store (in-memory)                              │   │
+│   │    └── BM25 Index (in-memory)                                      │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │  Process 3: Llamafile LLM (single executable)      Port 8080       │   │
+│   │    └── Mistral Nemo 12B (quantized, runs on CPU/GPU)               │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│   Memory: ~8GB │ Storage: ~15GB (models) │ No internet required            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why This Matters:**
+| Traditional Enterprise RAG | RagVault |
+|----------------------------|----------|
+| Kubernetes cluster with 5+ pods | **3 processes on 1 machine** |
+| Separate vector DB server (Pinecone/Weaviate) | **FAISS in-memory, no server** |
+| Cloud LLM API (OpenAI/Anthropic) | **Llamafile single binary** |
+| Redis/Celery for job queues | **Synchronous, no queue needed** |
+| Docker Compose with 8 services | **`./start_all.sh` — one script** |
+| $500+/month cloud costs | **$0 — runs on your existing hardware** |
+
+**Llamafile Magic:** The LLM is a **single self-contained executable** (~8GB) that includes:
+- The Mistral Nemo 12B model weights (quantized)
+- A built-in HTTP server
+- Cross-platform runtime (macOS, Linux, Windows)
+- Zero dependencies — just download and run
 
 ---
 
