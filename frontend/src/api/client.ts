@@ -172,6 +172,49 @@ export const api = {
         return res.json();
     },
 
+    async viewDocument(filename: string): Promise<string> {
+        // Returns a blob URL for inline viewing
+        const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(filename)}/view`, {
+            headers: getHeaders(),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to view document');
+        }
+
+        const blob = await res.blob();
+        return URL.createObjectURL(blob);
+    },
+
+    async downloadDocument(filename: string): Promise<void> {
+        // Triggers a file download
+        const res = await fetch(`${API_BASE}/documents/${encodeURIComponent(filename)}/download`, {
+            headers: getHeaders(),
+        });
+
+        await handleResponse(res);
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.detail || 'Failed to download document');
+        }
+
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+
+        // Create download link and click it
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
     async clearAll(): Promise<{ status: string; message: string }> {
         const res = await fetch(`${API_BASE}/clear`, {
             method: 'POST',
