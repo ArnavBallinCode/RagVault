@@ -1,0 +1,20 @@
+{
+  "id": "agent-gamma-latency-first",
+  "agent": "retrieval-tuner-gamma",
+  "description": "Latency-first proposal: keep a compact candidate set and smaller embedding batches for interactive use.",
+  "config_paths": ["config/init_config.yaml", "config/process_config.yaml"],
+  "models": {"generator": "Mistral-Nemo-Instruct-2407.Q5_K_M", "embedding": "nomic-embed-text-v1.5", "reranker": "bge-reranker-v2-m3"},
+  "config_overrides": {
+    "retrieval.top_k": 3,
+    "retrieval.send_nb_chunks_to_llm": 2,
+    "retrieval.use_reranking": true,
+    "processing.batch_size_embeddings": 16,
+    "retrieval.bm25_weight": 0.15
+  },
+  "dataset": "evaluation/datasets/smoke.json",
+  "predictions": "evaluation/candidates/agent-gamma-latency-first.json",
+  "baseline": "evaluation/baselines/smoke.json",
+  "k": 2,
+  "max_regression": 0.001,
+  "status": "proposal"
+}
