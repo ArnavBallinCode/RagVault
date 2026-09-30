@@ -11,6 +11,10 @@ on:
       - '.github/workflows/evaluation.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   deterministic-quality-gate:
     runs-on: ubuntu-latest
@@ -21,6 +25,8 @@ jobs:
           python-version: '3.10'
       - name: Run deterministic evaluator tests
         run: python -m unittest discover -s tests -v
+      - name: Validate agent experiment manifests
+        run: python -m evaluation.manifest --directory evaluation/experiments
       - name: Produce a candidate benchmark report
         run: >
           python -m evaluation.run
@@ -38,6 +44,32 @@ jobs:
               --baseline evaluation/baselines/smoke.json \
               --max-regression 0.001 \
               --output-dir "evaluation/results/$name"
+      - name: Build pull-request before/after table
+        run: >
+          python -m evaluation.report
+          --baseline evaluation/baselines/smoke.json
+          --candidate evaluation/results/latest.json
+          --max-regression 0.001
+          --output evaluation/results/pr-summary.md
+      - name: Post evaluation table to pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('evaluation/results/pr-summary.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes('<!-- ragvault-evaluation-report -->'));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
           done
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
