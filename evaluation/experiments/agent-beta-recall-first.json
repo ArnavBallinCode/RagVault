@@ -1,0 +1,19 @@
+{
+  "id": "agent-beta-recall-first",
+  "agent": "retrieval-tuner-beta",
+  "description": "Recall-first proposal: widen the candidate pool before reranking to protect evidence coverage.",
+  "config_paths": ["config/init_config.yaml", "config/process_config.yaml"],
+  "models": {"generator": "Mistral-Nemo-Instruct-2407.Q5_K_M", "embedding": "nomic-embed-text-v1.5", "reranker": "bge-reranker-v2-m3"},
+  "config_overrides": {
+    "retrieval.top_k": 8,
+    "retrieval.send_nb_chunks_to_llm": 3,
+    "retrieval.use_reranking": true,
+    "retrieval.bm25_weight": 0.35
+  },
+  "dataset": "evaluation/datasets/smoke.json",
+  "predictions": "evaluation/candidates/agent-beta-recall-first.json",
+  "baseline": "evaluation/baselines/smoke.json",
+  "k": 2,
+  "max_regression": 0.001,
+  "status": "proposal"
+}
