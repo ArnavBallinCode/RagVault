@@ -1,0 +1,20 @@
+{
+  "retrieval": {
+    "recall_at_2": 1.0,
+    "precision_at_2": 1.0,
+    "mrr": 1.0,
+    "ndcg_at_2": 1.0
+  },
+  "generation": {
+    "lexical_answer_f1": 0.7272727272727273
+  },
+  "evidence": {
+    "citation_recall": 1.0
+  },
+  "abstention": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "false_positive_rate": 0.0,
+    "false_negative_rate": 0.0
+  }
+}
