@@ -70,11 +70,30 @@ export interface SourceDetail {
     department: string;
 }
 
+export interface EvidenceNode {
+    id: string;
+    kind: 'answer' | 'source' | 'entity';
+    label: string;
+    department?: string | null;
+}
+
+export interface EvidenceEdge {
+    source: string;
+    target: string;
+    relation: string;
+}
+
+export interface EvidenceGraph {
+    nodes: EvidenceNode[];
+    edges: EvidenceEdge[];
+}
+
 export interface QueryResponse {
     query: string;
     answer: string;
     sources: string[];
     source_details?: SourceDetail[];
+    evidence_graph?: EvidenceGraph;
     timestamp: string;
 }
 
