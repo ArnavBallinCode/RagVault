@@ -55,7 +55,7 @@ import {
 } from 'lucide-react';
 
 import { api } from './api/client';
-import type { User as UserType, DocumentsResponse, QueryResponse, HealthResponse, StatsResponse } from './types';
+import type { User as UserType, DocumentsResponse, QueryResponse, HealthResponse, StatsResponse, DecisionReceipt } from './types';
 import { Plus } from 'lucide-react';
 
 // ============================================================================
@@ -71,6 +71,7 @@ const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () =
     { path: '/users', icon: Users, label: 'User Management', adminOnly: true },
     { path: '/metrics', icon: BarChart3, label: 'Metrics', adminOnly: true },
     { path: '/history', icon: Clock, label: 'History', adminOnly: true },
+    { path: '/receipts', icon: Shield, label: 'Decision Receipts', adminOnly: true },
     { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
     { path: '/settings', icon: Settings, label: 'Configuration', adminOnly: true },
   ];
@@ -134,6 +135,7 @@ const Breadcrumb = () => {
     '/documents': 'Documents',
     '/models': 'LLM Settings',
     '/settings': 'Configuration',
+    '/receipts': 'Decision Receipts',
   };
 
   return (
@@ -143,6 +145,34 @@ const Breadcrumb = () => {
       <span className="breadcrumb-current">{paths[location.pathname] || 'Pipeline'}</span>
     </div>
   );
+};
+
+const ReceiptsPage = () => {
+  const [receipts, setReceipts] = useState<DecisionReceipt[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const loadReceipts = useCallback(async () => {
+    setLoading(true);
+    try { const response = await api.getReceipts(); setReceipts(response.receipts); setError(''); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not load receipts'); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { loadReceipts(); }, [loadReceipts]);
+  const sendFeedback = async (id: string, verdict: 'correct' | 'incorrect' | 'needs_review') => {
+    try { await api.submitReceiptFeedback(id, verdict); await loadReceipts(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Could not save feedback'); }
+  };
+  return <div className="page-content receipts-page">
+    <div className="page-header"><div><h1>Decision Receipts</h1><p>Replayable answers, evidence, runtime configuration, and reviewer feedback.</p></div><button className="btn-secondary" onClick={loadReceipts}><RefreshCw size={15} /> Refresh</button></div>
+    <div className="trust-note"><Shield size={16} /> Receipts store fingerprints and evidence metadata—not copies of document contents.</div>
+    {error && <div className="error-message">{error}</div>}
+    {loading ? <div className="empty-state"><Loader2 className="spin" /> Loading receipts…</div> : receipts.length === 0 ? <div className="empty-state"><Shield size={30} /><p>Ask a question to create the first receipt.</p></div> : <div className="receipt-list">{receipts.map((receipt) => <article className="receipt-card" key={receipt.id}>
+      <div className="receipt-card-header"><div><span className="receipt-id">{receipt.id}</span><span className={`evidence-status ${receipt.response.evidence_status}`}>{receipt.response.evidence_status.replace('_', ' ')}</span></div><time>{new Date(receipt.created_at).toLocaleString()}</time></div>
+      <p className="receipt-query">{receipt.request.query}</p><p className="receipt-answer">{receipt.response.answer}</p>
+      <div className="receipt-meta">{receipt.response.sources.length} source(s) · {receipt.runtime.models?.rerank_model || 'configured reranker'} · review: {receipt.review.status}</div>
+      <div className="receipt-actions"><button onClick={() => sendFeedback(receipt.id, 'correct')} disabled={receipt.review.status === 'confirmed'}><Check size={14} /> Correct</button><button onClick={() => sendFeedback(receipt.id, 'needs_review')}><Eye size={14} /> Review</button><button onClick={() => sendFeedback(receipt.id, 'incorrect')}><XCircle size={14} /> Incorrect</button></div>
+    </article>)}</div>}
+  </div>;
 };
 
 // ============================================================================
@@ -2610,6 +2640,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               <Route path="/users" element={<UsersPage />} />
               <Route path="/metrics" element={<MetricsPage />} />
               <Route path="/history" element={<HistoryPage />} />
+              <Route path="/receipts" element={<ReceiptsPage />} />
               <Route path="/models" element={<LLMPage />} />
               <Route path="/settings" element={<ConfigPage />} />
             </>

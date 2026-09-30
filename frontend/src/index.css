@@ -729,6 +729,21 @@ body {
   font-size: 0.9rem;
 }
 
+.trust-note { display: flex; align-items: center; gap: 8px; margin: -12px 0 20px; padding: 10px 12px; border: 1px solid rgba(6, 182, 212, .25); border-radius: 8px; color: #a5f3fc; background: rgba(6, 182, 212, .06); font-size: .8rem; }
+.receipt-list { display: grid; gap: 12px; }
+.receipt-card { padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; }
+.receipt-card-header, .receipt-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.receipt-card-header time, .receipt-meta { color: var(--text-muted); font-size: .72rem; }
+.receipt-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .75rem; color: #c4b5fd; margin-right: 8px; }
+.evidence-status { text-transform: uppercase; font-size: .62rem; letter-spacing: .04em; padding: 3px 6px; border-radius: 4px; }
+.evidence-status.supported { color: #bbf7d0; background: rgba(34,197,94,.14); }
+.evidence-status.insufficient_evidence { color: #fde68a; background: rgba(245,158,11,.14); }
+.receipt-query { margin: 13px 0 6px; color: var(--text-primary); font-weight: 600; }
+.receipt-answer { margin: 0 0 10px; color: var(--text-secondary); font-size: .85rem; line-height: 1.5; white-space: pre-wrap; }
+.receipt-actions { justify-content: flex-start; margin-top: 13px; }
+.receipt-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); background: var(--bg-hover); cursor: pointer; font-size: .72rem; }
+.receipt-actions button:hover { color: var(--text-primary); border-color: var(--accent-purple); }
+
 .btn-primary {
   display: flex;
   align-items: center;

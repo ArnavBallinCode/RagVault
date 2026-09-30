@@ -111,6 +111,24 @@ export const api = {
         return res.json();
     },
 
+    async getReceipts(): Promise<{ receipts: import('../types').DecisionReceipt[]; total: number }> {
+        const res = await fetch(`${API_BASE}/receipts`, { headers: getHeaders() });
+        await handleResponse(res);
+        if (!res.ok) throw new Error('Failed to load decision receipts');
+        return res.json();
+    },
+
+    async submitReceiptFeedback(id: string, verdict: 'correct' | 'incorrect' | 'needs_review', note = '', correction = '') {
+        const res = await fetch(`${API_BASE}/receipts/${encodeURIComponent(id)}/feedback`, {
+            method: 'POST',
+            headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ verdict, note, correction }),
+        });
+        await handleResponse(res);
+        if (!res.ok) throw new Error('Failed to save feedback');
+        return res.json();
+    },
+
     async uploadDocument(file: File, department: string): Promise<UploadResponse> {
         const formData = new FormData();
         formData.append('file', file);
