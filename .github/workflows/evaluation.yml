@@ -34,9 +34,11 @@ jobs:
           --max-regression 0.001
           --output-dir evaluation/results
       - name: Gate submitted model/config candidates
+        id: candidates
         shell: bash
         run: |
           shopt -s nullglob
+          report_predictions="evaluation/fixtures/smoke_predictions.json"
           for candidate in evaluation/candidates/*.json; do
             name="$(basename "$candidate" .json)"
             python -m evaluation.run \
@@ -44,11 +46,18 @@ jobs:
               --baseline evaluation/baselines/smoke.json \
               --max-regression 0.001 \
               --output-dir "evaluation/results/$name"
+            report_predictions="$candidate"
+          done
+          python -m evaluation.run \
+            --predictions "$report_predictions" \
+            --baseline evaluation/baselines/smoke.json \
+            --max-regression 0.001 \
+            --output-dir evaluation/results/pr-candidate
       - name: Build pull-request before/after table
         run: >
           python -m evaluation.report
           --baseline evaluation/baselines/smoke.json
-          --candidate evaluation/results/latest.json
+          --candidate evaluation/results/pr-candidate/latest.json
           --max-regression 0.001
           --output evaluation/results/pr-summary.md
       - name: Post evaluation table to pull request
@@ -70,7 +79,6 @@ jobs:
             } else {
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
-          done
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
         with:

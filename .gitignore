@@ -120,6 +120,7 @@ environment.yml
 # Runtime data files
 data/metrics.json
 data/query_history.json
+data/decision_receipts.json
 evaluation/results/
 # Local model folders (download separately)
 models/nomic-*

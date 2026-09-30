@@ -70,12 +70,42 @@ export interface SourceDetail {
     department: string;
 }
 
+export interface EvidenceNode {
+    id: string;
+    kind: 'answer' | 'source' | 'entity';
+    label: string;
+    department?: string | null;
+}
+
+export interface EvidenceEdge {
+    source: string;
+    target: string;
+    relation: string;
+}
+
+export interface EvidenceGraph {
+    nodes: EvidenceNode[];
+    edges: EvidenceEdge[];
+}
+
 export interface QueryResponse {
     query: string;
     answer: string;
     sources: string[];
     source_details?: SourceDetail[];
+    evidence_graph?: EvidenceGraph;
+    receipt_id?: string;
     timestamp: string;
+}
+
+export interface DecisionReceipt {
+    id: string;
+    created_at: string;
+    actor: string;
+    request: { query: string; top_k: number };
+    response: { answer: string; evidence_status: 'supported' | 'insufficient_evidence'; sources: string[] };
+    runtime: { models: Record<string, string>; retrieval: Record<string, unknown> };
+    review: { status: 'unreviewed' | 'confirmed' | 'needs_review'; verdict?: string; note?: string; correction?: string };
 }
 
 export interface NodeStatus {

@@ -19,6 +19,7 @@ import logging
 from typing import List, Optional
 from datetime import datetime, timedelta
 import json
+import hashlib
 
 # Query history file
 HISTORY_FILE = "data/query_history.json"
@@ -40,6 +41,7 @@ from rbac import (
 )
 from auth import UserInDB
 from document_metadata import document_metadata
+from src.trust.receipt_store import receipt_store
 
 # Metrics imports
 import metrics
@@ -83,6 +85,11 @@ class QueryRequest(BaseModel):
     query: str
     top_k: int = 2
 
+class ReceiptFeedbackRequest(BaseModel):
+    verdict: str  # correct, incorrect, or needs_review
+    note: str = ''
+    correction: str = ''
+
 class SourceDetail(BaseModel):
     """Detailed source information for evidence pop-ups with precision extraction"""
     filename: str
@@ -91,12 +98,54 @@ class SourceDetail(BaseModel):
     matched_entities: List[str] = []  # Entities matched for highlighting
     department: str
 
+class EvidenceNode(BaseModel):
+    """A visible node in the query evidence map."""
+    id: str
+    kind: str  # answer, source, or entity
+    label: str
+    department: Optional[str] = None
+
+class EvidenceEdge(BaseModel):
+    source: str
+    target: str
+    relation: str
+
+class EvidenceGraph(BaseModel):
+    """Traceable query-time evidence relationships; not a truth/confidence graph."""
+    nodes: List[EvidenceNode]
+    edges: List[EvidenceEdge]
+
 class QueryResponse(BaseModel):
     query: str
     answer: str
     sources: List[str]  # Backward compatibility
     source_details: Optional[List[SourceDetail]] = None  # Detailed source info for pop-ups
+    evidence_graph: Optional[EvidenceGraph] = None
+    receipt_id: Optional[str] = None
     timestamp: str
+
+
+def fingerprint_file(path: str) -> Optional[str]:
+    """Return a source fingerprint without storing document contents in receipts."""
+    try:
+        digest = hashlib.sha256()
+        with open(path, 'rb') as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b''):
+                digest.update(block)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def runtime_fingerprint() -> dict:
+    """Capture the configuration/model identity that produced a response."""
+    config_paths = ['config/init_config.yaml', 'config/process_config.yaml']
+    config_hashes = {path: fingerprint_file(path) for path in config_paths}
+    return {
+        'config_hashes': config_hashes,
+        'models': rag_components.init_config.get('model', {}) if rag_components else {},
+        'retrieval': rag_components.process_config.get('retrieval', {}) if rag_components else {},
+    }
 
 @app.on_event("startup")
 async def startup_event():
@@ -306,6 +355,26 @@ async def query(
                     matched_entities=matched_entities,
                     department=data['department']
                 ))
+
+            # Represent the answer-to-source trail used in this response. This is
+            # deliberately query-scoped: it exposes retrieval evidence without
+            # claiming that a generated answer has been fact-verified.
+            graph_nodes = [EvidenceNode(id='answer', kind='answer', label='Generated answer')]
+            graph_edges = []
+            for source_index, source_detail in enumerate(source_details):
+                source_id = f'source-{source_index}'
+                graph_nodes.append(EvidenceNode(
+                    id=source_id,
+                    kind='source',
+                    label=source_detail.filename,
+                    department=source_detail.department,
+                ))
+                graph_edges.append(EvidenceEdge(source='answer', target=source_id, relation='supported by'))
+                for entity_index, entity in enumerate(source_detail.matched_entities[:5]):
+                    entity_id = f'{source_id}-entity-{entity_index}'
+                    graph_nodes.append(EvidenceNode(id=entity_id, kind='entity', label=entity))
+                    graph_edges.append(EvidenceEdge(source=source_id, target=entity_id, relation='mentions'))
+            evidence_graph = EvidenceGraph(nodes=graph_nodes, edges=graph_edges)
             
             metrics.record_query(user.role.value, "success")
             
@@ -318,12 +387,30 @@ async def query(
                 "sources": list(set(sources)),
                 "answer_preview": response_data['response'][:200] + "..." if len(response_data['response']) > 200 else response_data['response']
             })
+
+            evidence_status = 'supported' if source_details else 'insufficient_evidence'
+            receipt = receipt_store.create({
+                'kind': 'query_answer',
+                'actor': user.username,
+                'request': {'query': request.query, 'top_k': request.top_k},
+                'response': {
+                    'answer': response_data['response'],
+                    'sources': list(set(sources)),
+                    'source_details': [detail.model_dump() for detail in source_details],
+                    'evidence_graph': evidence_graph.model_dump(),
+                    'evidence_status': evidence_status,
+                },
+                'source_fingerprints': {source: fingerprint_file(source) for source in set(sources)},
+                'runtime': runtime_fingerprint(),
+            })
             
             return QueryResponse(
                 query=request.query,
                 answer=response_data['response'],
                 sources=list(set(sources)),
                 source_details=source_details,
+                evidence_graph=evidence_graph,
+                receipt_id=receipt['id'],
                 timestamp=datetime.now().isoformat()
             )
     
@@ -332,6 +419,53 @@ async def query(
         metrics.record_query(user.role.value, "error")
         metrics.record_error("/query", type(e).__name__)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/receipts")
+async def list_receipts(limit: int = 50, user: UserInDB = Depends(require_any_authenticated)):
+    """List replayable decision receipts; non-admin users only see their own."""
+    actor = None if user.role == Role.ADMIN else user.username
+    receipts = receipt_store.list(actor=actor, limit=limit)
+    return {'receipts': receipts, 'total': len(receipts)}
+
+
+@app.get("/receipts/{receipt_id}")
+async def get_receipt(receipt_id: str, user: UserInDB = Depends(require_any_authenticated)):
+    receipt = receipt_store.get(receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail='Receipt not found')
+    if user.role != Role.ADMIN and receipt.get('actor') != user.username:
+        raise HTTPException(status_code=403, detail='Access denied')
+    return receipt
+
+
+@app.post("/receipts/{receipt_id}/feedback")
+async def submit_receipt_feedback(
+    receipt_id: str,
+    feedback: ReceiptFeedbackRequest,
+    user: UserInDB = Depends(require_any_authenticated),
+):
+    if feedback.verdict not in {'correct', 'incorrect', 'needs_review'}:
+        raise HTTPException(status_code=422, detail='verdict must be correct, incorrect, or needs_review')
+    receipt = receipt_store.get(receipt_id)
+    if not receipt:
+        raise HTTPException(status_code=404, detail='Receipt not found')
+    if user.role != Role.ADMIN and receipt.get('actor') != user.username:
+        raise HTTPException(status_code=403, detail='Access denied')
+    updated = receipt_store.add_feedback(receipt_id, {
+        'verdict': feedback.verdict,
+        'note': feedback.note,
+        'correction': feedback.correction,
+        'reviewed_by': user.username,
+    })
+    return updated
+
+
+@app.get("/reviews")
+async def review_queue(user: UserInDB = Depends(require_admin)):
+    """Admin queue for feedback that should become labelled evaluation data."""
+    queue = receipt_store.review_queue()
+    return {'items': queue, 'total': len(queue)}
 
 # ============================================================================
 # PROTECTED ENDPOINTS - Admin Only
