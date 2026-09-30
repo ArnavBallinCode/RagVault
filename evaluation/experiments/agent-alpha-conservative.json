@@ -1,0 +1,19 @@
+{
+  "id": "agent-alpha-conservative",
+  "agent": "retrieval-tuner-alpha",
+  "description": "Conservative proposal: preserve the current quality baseline while reducing unnecessary retrieval breadth.",
+  "config_paths": ["config/init_config.yaml", "config/process_config.yaml"],
+  "models": {"generator": "Mistral-Nemo-Instruct-2407.Q5_K_M", "embedding": "nomic-embed-text-v1.5", "reranker": "bge-reranker-v2-m3"},
+  "config_overrides": {
+    "retrieval.top_k": 4,
+    "retrieval.send_nb_chunks_to_llm": 2,
+    "retrieval.use_reranking": true,
+    "retrieval.bm25_weight": 0.2
+  },
+  "dataset": "evaluation/datasets/smoke.json",
+  "predictions": "evaluation/candidates/agent-alpha-conservative.json",
+  "baseline": "evaluation/baselines/smoke.json",
+  "k": 2,
+  "max_regression": 0.001,
+  "status": "proposal"
+}
