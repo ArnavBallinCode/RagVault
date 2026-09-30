@@ -1,10 +1,19 @@
 services:
   llm:
-    build:
-      context: .
-      dockerfile: Dockerfile.llm
+    # llama.cpp's Linux server supports both amd64 and arm64. It needs a GGUF
+    # model file; a macOS .llamafile is an executable and cannot run in Docker.
+    image: ghcr.io/ggml-org/llama.cpp:server
+    command:
+      - -m
+      - /models/${RAGVAULT_GGUF_MODEL:?Set RAGVAULT_GGUF_MODEL to a Linux-compatible GGUF filename}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8081"
+      - --n-gpu-layers
+      - "0"
     volumes:
-      - ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile:/models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile:ro
+      - ./models:/models:ro
     ports:
       - "8081:8081"
     restart: unless-stopped
@@ -14,4 +23,4 @@ services:
       RAGVAULT_LLM_URL: http://llm:8081
     depends_on:
       llm:
-        condition: service_healthy
+        condition: service_started

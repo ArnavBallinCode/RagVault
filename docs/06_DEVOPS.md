@@ -2,6 +2,11 @@
 
 > Docker containerization, infrastructure, and deployment guide
 
+> **Current deployment reference:** use [DOCKER.md](DOCKER.md) for the supported
+> Compose commands and model-runtime requirements. The detailed examples below
+> are retained as historical architecture notes and may describe superseded
+> filenames or services.
+
 ---
 
 ## Overview

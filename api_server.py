@@ -143,10 +143,21 @@ def runtime_fingerprint() -> dict:
     """Capture the configuration/model identity that produced a response."""
     config_paths = ['config/init_config.yaml', 'config/process_config.yaml']
     config_hashes = {path: fingerprint_file(path) for path in config_paths}
+    model_config = dict(rag_components.init_config.get('model', {})) if rag_components else {}
+    retrieval_config = dict(rag_components.process_config.get('retrieval', {})) if rag_components else {}
+    if rag_components:
+        # Keep the requested configuration and record the value the runtime
+        # actually used (for example, MPS config safely falls back to CPU in a
+        # Linux container).
+        model_config['device_rerank_effective'] = rag_components.reranker.device
+        retrieval_config['llamafile_server_base_url_effective'] = os.getenv(
+            'RAGVAULT_LLM_URL',
+            retrieval_config.get('llamafile_server_base_url'),
+        )
     return {
         'config_hashes': config_hashes,
-        'models': rag_components.init_config.get('model', {}) if rag_components else {},
-        'retrieval': rag_components.process_config.get('retrieval', {}) if rag_components else {},
+        'models': model_config,
+        'retrieval': retrieval_config,
     }
 
 
