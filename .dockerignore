@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+cache
+logs
+models
+data/decision_receipts.json
+data/learning_exports
+frontend/node_modules
+frontend/dist
+evaluation/results
+__pycache__
+*.pyc

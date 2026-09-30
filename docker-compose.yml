@@ -1,0 +1,32 @@
+name: ragvault
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      # Recommended on macOS: run the Llamafile on the host for Metal/MPS.
+      RAGVAULT_LLM_URL: ${RAGVAULT_LLM_URL:-http://host.docker.internal:8081}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+      - ./models/nomic-embed-text-v1.5:/app/models/nomic-embed-text-v1.5:ro
+      - ./models/bge-reranker-v2-m3:/app/models/bge-reranker-v2-m3:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+    restart: unless-stopped

@@ -1,0 +1,17 @@
+services:
+  llm:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm
+    volumes:
+      - ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile:/models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile:ro
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  backend:
+    environment:
+      RAGVAULT_LLM_URL: http://llm:8081
+    depends_on:
+      llm:
+        condition: service_healthy
