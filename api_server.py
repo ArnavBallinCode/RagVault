@@ -91,11 +91,29 @@ class SourceDetail(BaseModel):
     matched_entities: List[str] = []  # Entities matched for highlighting
     department: str
 
+class EvidenceNode(BaseModel):
+    """A visible node in the query evidence map."""
+    id: str
+    kind: str  # answer, source, or entity
+    label: str
+    department: Optional[str] = None
+
+class EvidenceEdge(BaseModel):
+    source: str
+    target: str
+    relation: str
+
+class EvidenceGraph(BaseModel):
+    """Traceable query-time evidence relationships; not a truth/confidence graph."""
+    nodes: List[EvidenceNode]
+    edges: List[EvidenceEdge]
+
 class QueryResponse(BaseModel):
     query: str
     answer: str
     sources: List[str]  # Backward compatibility
     source_details: Optional[List[SourceDetail]] = None  # Detailed source info for pop-ups
+    evidence_graph: Optional[EvidenceGraph] = None
     timestamp: str
 
 @app.on_event("startup")
@@ -306,6 +324,26 @@ async def query(
                     matched_entities=matched_entities,
                     department=data['department']
                 ))
+
+            # Represent the answer-to-source trail used in this response. This is
+            # deliberately query-scoped: it exposes retrieval evidence without
+            # claiming that a generated answer has been fact-verified.
+            graph_nodes = [EvidenceNode(id='answer', kind='answer', label='Generated answer')]
+            graph_edges = []
+            for source_index, source_detail in enumerate(source_details):
+                source_id = f'source-{source_index}'
+                graph_nodes.append(EvidenceNode(
+                    id=source_id,
+                    kind='source',
+                    label=source_detail.filename,
+                    department=source_detail.department,
+                ))
+                graph_edges.append(EvidenceEdge(source='answer', target=source_id, relation='supported by'))
+                for entity_index, entity in enumerate(source_detail.matched_entities[:5]):
+                    entity_id = f'{source_id}-entity-{entity_index}'
+                    graph_nodes.append(EvidenceNode(id=entity_id, kind='entity', label=entity))
+                    graph_edges.append(EvidenceEdge(source=source_id, target=entity_id, relation='mentions'))
+            evidence_graph = EvidenceGraph(nodes=graph_nodes, edges=graph_edges)
             
             metrics.record_query(user.role.value, "success")
             
@@ -324,6 +362,7 @@ async def query(
                 answer=response_data['response'],
                 sources=list(set(sources)),
                 source_details=source_details,
+                evidence_graph=evidence_graph,
                 timestamp=datetime.now().isoformat()
             )
     

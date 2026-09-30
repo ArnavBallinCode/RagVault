@@ -127,7 +127,11 @@ class DataIngestion:
                 
             except Exception as e:
                 self.logger.error(f"Error processing {source_str}: {str(e)}")
-                raise
+                # One malformed or currently unsupported upload must not prevent
+                # every other document from being searchable. The failure remains
+                # visible in the logs and can be retried after its dependency is
+                # installed or the file is replaced.
+                continue
         
         return all_documents
     

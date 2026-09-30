@@ -51,6 +51,7 @@ import {
   Send,
   Clock,
   Users,
+  GitBranch,
 } from 'lucide-react';
 
 import { api } from './api/client';
@@ -337,6 +338,7 @@ const ResultNode = ({ data }: { data: any }) => {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [activeSource, setActiveSource] = useState<any | null>(null);
+  const [showEvidence, setShowEvidence] = useState(false);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
   const popupRef = useRef<HTMLDivElement>(null);
 
@@ -455,6 +457,37 @@ const ResultNode = ({ data }: { data: any }) => {
                     <span key={i} className="source-tag-mini">{s.split('/').pop()}</span>
                   ))}
                 </div>
+              </div>
+            )}
+            {data.result.evidence_graph?.nodes?.length > 1 && (
+              <div className="evidence-map">
+                <button className="evidence-map-toggle" onClick={() => setShowEvidence(!showEvidence)}>
+                  <span><GitBranch size={14} /> Evidence map</span>
+                  <span>{showEvidence ? 'Hide' : 'Show'}</span>
+                </button>
+                {showEvidence && (
+                  <div className="evidence-map-body">
+                    <div className="evidence-node answer-node">Generated answer</div>
+                    {data.result.evidence_graph.nodes
+                      .filter((node: any) => node.kind === 'source')
+                      .map((node: any) => {
+                        const entities = data.result.evidence_graph.edges
+                          .filter((edge: any) => edge.source === node.id && edge.relation === 'mentions')
+                          .map((edge: any) => data.result.evidence_graph.nodes.find((candidate: any) => candidate.id === edge.target)?.label)
+                          .filter(Boolean);
+                        return (
+                          <div className="evidence-source-row" key={node.id}>
+                            <span className="evidence-link">supported by</span>
+                            <div className="evidence-node source-node">
+                              <FileText size={13} /> {node.label}
+                              {entities.length > 0 && <div className="evidence-entities">{entities.map((entity: string) => <span key={entity}>{entity}</span>)}</div>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    <p className="evidence-map-note">Shows this response’s retrieval trail and matched terms. It is not a factual-confidence score.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
