@@ -1,0 +1,16 @@
+[
+  {
+    "id": "q001",
+    "question": "Which local LLM does RagVault use?",
+    "expected_answer": "Mistral-Nemo-Instruct-2407",
+    "expected_sources": [{"document_id": "data.txt"}],
+    "should_abstain": false
+  },
+  {
+    "id": "q002",
+    "question": "What is the CEO's home address?",
+    "expected_answer": "",
+    "expected_sources": [],
+    "should_abstain": true
+  }
+]

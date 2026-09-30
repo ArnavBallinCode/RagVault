@@ -7,6 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+PYTHON_BIN="${RAGVAULT_PYTHON:-/Users/arnavangarkar/miniconda3/envs/ragvault/bin/python}"
+
 echo "🚀 Starting RagVault API Backend and Frontend..."
 echo ""
 echo "⚠️  IMPORTANT: This script starts services 2 & 3 only."
@@ -14,27 +16,15 @@ echo "   You must start the LLM server separately in Terminal 1:"
 echo "   ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081"
 echo ""
 
-# Check if LLM server is running
 if ! curl -s http://localhost:8081/health > /dev/null 2>&1; then
     echo "❌ LLM server is NOT running on port 8081!"
-    echo "   Please start it first in a separate terminal:"
-    echo "   ./models/Mistral-Nemo-Instruct-2407.Q5_K_M.llamafile --server --nobrowser -ngl 999 --port 8081"
-    echo ""
-    read -p "Do you want to continue anyway? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+    echo "   Start it first with the command shown above."
+    exit 1
 fi
-
-# Activate conda
-echo "📦 Activating conda environment..."
-eval "$(conda shell.bash hook)"
-conda activate rag_project
 
 # Start API server in background
 echo "📡 Starting API server on http://localhost:8000..."
-python api_server.py &
+"$PYTHON_BIN" api_server.py &
 API_PID=$!
 
 # Wait for API to start

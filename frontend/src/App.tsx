@@ -379,11 +379,6 @@ const ResultNode = ({ data }: { data: any }) => {
     setActiveSource(source);
   };
 
-  // Get user permissions
-  const storedUser = localStorage.getItem('ragvault_user');
-  const parsedUser = storedUser ? JSON.parse(storedUser) : null;
-  const isAdmin = parsedUser?.role === 'admin';
-
   // Department colors
   const deptColors: Record<string, string> = {
     finance: '#10b981', hr: '#8b5cf6', engineering: '#3b82f6',
@@ -748,7 +743,6 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
 
   // Get documents_info for file sizes if available
   const docsInfo = documents?.documents_info || [];
-  const serverUserDepts = documents?.user_departments || [];
 
   // Department badge color mapping
   const deptColors: Record<string, string> = {
@@ -912,7 +906,6 @@ const DocumentsPage = ({ documents, isOnline, onRefresh, onDocumentsChange }: an
           })
         ) : documents?.documents?.map((doc: string, i: number) => {
           const filename = doc.split('/').pop() || doc;
-          const hasAccess = true; // General department accessible to all
           return (
             <div key={i} className="table-row">
               <div className="doc-info">

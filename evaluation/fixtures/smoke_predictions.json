@@ -1,0 +1,14 @@
+{
+  "q001": {
+    "answer": "RagVault uses Mistral-Nemo-Instruct-2407 locally.",
+    "retrieved_sources": ["data/raw/data.txt"],
+    "cited_sources": ["data.txt"],
+    "abstained": false
+  },
+  "q002": {
+    "answer": "",
+    "retrieved_sources": [],
+    "cited_sources": [],
+    "abstained": true
+  }
+}

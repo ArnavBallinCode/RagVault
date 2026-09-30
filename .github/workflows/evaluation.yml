@@ -1,0 +1,56 @@
+name: Evaluation and regression gate
+
+on:
+  pull_request:
+    paths:
+      - 'config/**'
+      - 'evaluation/**'
+      - 'src/**'
+      - 'api_server.py'
+      - 'frontend/**'
+      - '.github/workflows/evaluation.yml'
+  workflow_dispatch:
+
+jobs:
+  deterministic-quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Run deterministic evaluator tests
+        run: python -m unittest discover -s tests -v
+      - name: Produce a candidate benchmark report
+        run: >
+          python -m evaluation.run
+          --baseline evaluation/baselines/smoke.json
+          --max-regression 0.001
+          --output-dir evaluation/results
+      - name: Gate submitted model/config candidates
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for candidate in evaluation/candidates/*.json; do
+            name="$(basename "$candidate" .json)"
+            python -m evaluation.run \
+              --predictions "$candidate" \
+              --baseline evaluation/baselines/smoke.json \
+              --max-regression 0.001 \
+              --output-dir "evaluation/results/$name"
+          done
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-results
+          path: evaluation/results/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
