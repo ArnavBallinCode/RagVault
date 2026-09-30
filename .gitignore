@@ -121,6 +121,7 @@ environment.yml
 data/metrics.json
 data/query_history.json
 data/decision_receipts.json
+data/learning_exports/
 evaluation/results/
 # Local model folders (download separately)
 models/nomic-*

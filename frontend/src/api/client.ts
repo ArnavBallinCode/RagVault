@@ -129,6 +129,27 @@ export const api = {
         return res.json();
     },
 
+    async getExperiments() {
+        const res = await fetch(`${API_BASE}/experiments`, { headers: getHeaders() });
+        await handleResponse(res);
+        if (!res.ok) throw new Error('Failed to load experiments');
+        return res.json();
+    },
+
+    async getLearningCandidates() {
+        const res = await fetch(`${API_BASE}/learning/candidates`, { headers: getHeaders() });
+        await handleResponse(res);
+        if (!res.ok) throw new Error('Failed to load reviewed candidates');
+        return res.json();
+    },
+
+    async exportLearningCandidates() {
+        const res = await fetch(`${API_BASE}/learning/export`, { method: 'POST', headers: getHeaders() });
+        await handleResponse(res);
+        if (!res.ok) throw new Error('Failed to export reviewed candidates');
+        return res.json();
+    },
+
     async uploadDocument(file: File, department: string): Promise<UploadResponse> {
         const formData = new FormData();
         formData.append('file', file);

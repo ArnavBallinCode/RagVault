@@ -20,6 +20,7 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import json
 import hashlib
+from pathlib import Path
 
 # Query history file
 HISTORY_FILE = "data/query_history.json"
@@ -42,6 +43,7 @@ from rbac import (
 from auth import UserInDB
 from document_metadata import document_metadata
 from src.trust.receipt_store import receipt_store
+from evaluation.run import evaluate, load_json, metric_deltas
 
 # Metrics imports
 import metrics
@@ -146,6 +148,45 @@ def runtime_fingerprint() -> dict:
         'models': rag_components.init_config.get('model', {}) if rag_components else {},
         'retrieval': rag_components.process_config.get('retrieval', {}) if rag_components else {},
     }
+
+
+def reviewed_receipts_to_cases() -> list[dict]:
+    """Convert human-confirmed answers into exportable, traceable eval candidates."""
+    cases = []
+    for receipt in receipt_store.list(limit=200):
+        review = receipt.get('review', {})
+        if review.get('status') != 'confirmed':
+            continue
+        response = receipt.get('response', {})
+        answer = review.get('correction') or response.get('answer', '')
+        cases.append({
+            'id': f"feedback_{receipt['id']}",
+            'question': receipt.get('request', {}).get('query', ''),
+            'expected_answer': answer,
+            'expected_sources': [{'document_id': os.path.basename(source)} for source in response.get('sources', [])],
+            'should_abstain': response.get('evidence_status') == 'insufficient_evidence',
+            'receipt_id': receipt['id'],
+            'reviewed_at': review.get('updated_at'),
+        })
+    return cases
+
+
+def experiment_summaries() -> list[dict]:
+    """Evaluate committed experiment manifests for the UI control plane."""
+    summaries = []
+    for path in sorted(Path('evaluation/experiments').glob('*.json')):
+        manifest = load_json(path)
+        baseline = load_json(Path(manifest['baseline']))
+        result = evaluate(load_json(Path(manifest['dataset'])), load_json(Path(manifest['predictions'])), manifest['k'])
+        deltas = metric_deltas(baseline, result)
+        passed = all(delta >= -manifest['max_regression'] for delta in deltas.values())
+        summaries.append({
+            'id': manifest['id'], 'description': manifest['description'],
+            'config_paths': manifest['config_paths'], 'models': manifest['models'],
+            'metrics': result, 'deltas': deltas, 'passed': passed,
+            'max_regression': manifest['max_regression'],
+        })
+    return summaries
 
 @app.on_event("startup")
 async def startup_event():
@@ -466,6 +507,37 @@ async def review_queue(user: UserInDB = Depends(require_admin)):
     """Admin queue for feedback that should become labelled evaluation data."""
     queue = receipt_store.review_queue()
     return {'items': queue, 'total': len(queue)}
+
+
+@app.get("/learning/candidates")
+async def learning_candidates(user: UserInDB = Depends(require_admin)):
+    """Preview human-confirmed receipts before they are added to an eval dataset."""
+    cases = reviewed_receipts_to_cases()
+    return {'cases': cases, 'total': len(cases)}
+
+
+@app.post("/learning/export")
+async def export_learning_candidates(user: UserInDB = Depends(require_admin)):
+    """Export a dated evaluation dataset; it remains reviewable before Git inclusion."""
+    cases = reviewed_receipts_to_cases()
+    payload = {
+        'schema_version': 1,
+        'created_at': datetime.now().isoformat(),
+        'created_by': user.username,
+        'cases': cases,
+    }
+    serialized = json.dumps(payload, indent=2) + '\n'
+    digest = hashlib.sha256(serialized.encode()).hexdigest()
+    export_dir = Path('data/learning_exports')
+    export_dir.mkdir(parents=True, exist_ok=True)
+    path = export_dir / f"reviewed-evaluation-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
+    path.write_text(serialized, encoding='utf-8')
+    return {'path': str(path), 'sha256': digest, 'cases': len(cases)}
+
+
+@app.get("/experiments")
+async def experiments(user: UserInDB = Depends(require_admin)):
+    return {'experiments': experiment_summaries()}
 
 # ============================================================================
 # PROTECTED ENDPOINTS - Admin Only
