@@ -13,21 +13,32 @@ docker compose up --build
 
 Open `http://localhost:5173`. The frontend, API, uploads, caches, receipts, and learning exports are containerised; the backend reaches the host model through `host.docker.internal`.
 
-## Fully bundled portable mode
+## Fully bundled Linux/server mode
 
-For Linux/server deployment, include the model server in Compose:
+For Linux/server deployment, include the model server in Compose. This mode
+uses the official multi-architecture `llama.cpp` server image and therefore
+requires a **GGUF model file**, not a `.llamafile` executable.
+
+The checked-in local Mistral file is a macOS executable. Keep using it in the
+recommended macOS mode above; it is deliberately never replaced or downloaded
+by Compose.
+
+Place a Linux-compatible GGUF model in `models/`, then run:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.bundled.yml up --build
+RAGVAULT_GGUF_MODEL=your-model.gguf \
+  docker compose -f docker-compose.yml -f docker-compose.bundled.yml up --build
 ```
 
-This starts all three services, but the Llamafile runs CPU-only (`-ngl 0`). On Docker Desktop for macOS this is substantially slower than the recommended host-model mode because Metal is not passed through to Linux containers.
+This starts all three services and runs the model on CPU (`--n-gpu-layers 0`).
+For NVIDIA Linux hosts, use a CUDA-capable llama.cpp image and pass the host's
+GPU configuration explicitly.
 
 ## Persistent state and operations
 
 - `data/` stores uploads, document metadata, receipts, and learning exports.
 - `cache/` stores local indexes and embeddings. Delete it only when intentionally rebuilding the index.
-- Models are mounted read-only; compose never downloads or substitutes models.
+- Models are mounted read-only; Compose never downloads or substitutes them.
 - To point the backend to an external LLM service, set `RAGVAULT_LLM_URL`, for example `RAGVAULT_LLM_URL=http://llm.example:8081 docker compose up`.
 
 Useful commands:

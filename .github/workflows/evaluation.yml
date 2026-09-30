@@ -8,6 +8,9 @@ on:
       - 'src/**'
       - 'api_server.py'
       - 'frontend/**'
+      - 'Dockerfile.backend'
+      - 'docker-compose*.yml'
+      - 'docs/DOCKER.md'
       - '.github/workflows/evaluation.yml'
   workflow_dispatch:
 
@@ -16,6 +19,17 @@ permissions:
   pull-requests: write
 
 jobs:
+  compose-configuration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the host-model Compose deployment
+        run: docker compose config
+      - name: Validate the bundled Linux-GGUF Compose deployment
+        env:
+          RAGVAULT_GGUF_MODEL: example.gguf
+        run: docker compose -f docker-compose.yml -f docker-compose.bundled.yml config
+
   deterministic-quality-gate:
     runs-on: ubuntu-latest
     steps:

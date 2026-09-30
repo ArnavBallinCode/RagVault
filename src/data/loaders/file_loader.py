@@ -424,6 +424,9 @@ class FileLoader(BaseLoader):
             Exception: If any error occurs during loading or conversion
         """
         try:
+            if Path(file_path).suffix.lower() == ".pdf" and self.config.get("offline_mode", True):
+                return self._load_pdf_offline(file_path)
+
             result = self.docling_converter.convert(file_path)
             markdown_result = result.document.export_to_markdown().replace("<!-- image -->\n\n", "")
             metadata = {
@@ -441,6 +444,49 @@ class FileLoader(BaseLoader):
         except Exception as e:
             self.logger.error(f"Error loading PDF {file_path}: {str(e)}")
             raise
+
+    def _load_pdf_offline(self, file_path: str) -> List[Document]:
+        """Extract a PDF without Docling's downloadable layout models.
+
+        Offline mode must not silently discard PDFs when Docling's vision-model
+        snapshot is absent. pypdfium2 is already a runtime dependency and gives
+        us native text extraction; pages without meaningful text are rendered
+        and passed through the existing local OCR backend.
+        """
+        import pypdfium2 as pdfium
+
+        pdf = pdfium.PdfDocument(file_path)
+        documents = []
+        ocr_loader = None
+        for page_index in range(len(pdf)):
+            page = pdf[page_index]
+            text_page = page.get_textpage()
+            text = text_page.get_text_range().strip()
+            metadata = {
+                "source": file_path,
+                "is_markdown": False,
+                "page": page_index + 1,
+                "pdf_extraction": "native",
+            }
+
+            if len("".join(text.split())) < 50:
+                ocr_loader = ocr_loader or get_ocr_loader()
+                if ocr_loader.is_available:
+                    image = page.render(scale=2).to_pil()
+                    ocr_result = ocr_loader.ocr_pdf_page(image, page_index + 1)
+                    text = ocr_result["text"].strip()
+                    metadata["pdf_extraction"] = "ocr"
+
+            if text:
+                documents.append(Document(page_content=text, metadata=metadata))
+
+        if not documents:
+            raise ValueError(f"No searchable text could be extracted from PDF: {file_path}")
+
+        self.logger.info(
+            "Loaded %s PDF pages offline from %s", len(documents), file_path
+        )
+        return documents
     
     def load(self, source: Union[str, Path]) -> List[Any]:
         """

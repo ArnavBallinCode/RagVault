@@ -8,7 +8,8 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl tesseract-ocr libgomp1 libglib2.0-0 libgl1 \
+    curl tesseract-ocr libreoffice-core libreoffice-writer \
+    libgomp1 libglib2.0-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements_macos.txt ./

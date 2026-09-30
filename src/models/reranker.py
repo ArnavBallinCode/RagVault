@@ -65,13 +65,28 @@ class Reranker:
             - Moves model to specified device
         """
         self.config = config
-        self.device =  config['model']['device_rerank']
+        self.logger = logging.getLogger(__name__)
+        self.device = self._resolve_device(config['model']['device_rerank'])
         self.model_name = config['model']['rerank_model']
         self.batch_size = config['processing']['batch_size_reranking']
-        
-        self.logger = logging.getLogger(__name__)
-        
+
         self._initialize_model()
+
+    def _resolve_device(self, requested_device: str) -> str:
+        """Use the configured accelerator when it exists, otherwise use CPU.
+
+        The repository's local configuration is tuned for Apple Silicon.  That
+        same configuration is mounted into Linux containers, where ``mps`` is
+        not available.  Falling back here keeps the model choice identical
+        while making the runtime portable.
+        """
+        if requested_device == "mps" and not torch.backends.mps.is_available():
+            self.logger.warning("MPS reranking was requested but is unavailable; using CPU")
+            return "cpu"
+        if requested_device == "cuda" and not torch.cuda.is_available():
+            self.logger.warning("CUDA reranking was requested but is unavailable; using CPU")
+            return "cpu"
+        return requested_device
 
     def _initialize_model(self) -> None:
         """
