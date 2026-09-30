@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from evaluation.metrics import (
     binary_precision_recall,
@@ -9,6 +10,8 @@ from evaluation.metrics import (
     token_f1,
 )
 from evaluation.run import evaluate, metric_deltas
+from evaluation.report import render_report
+from evaluation.manifest import validate_manifest
 
 
 class EvaluationMetricTests(unittest.TestCase):
@@ -48,6 +51,26 @@ class EvaluationMetricTests(unittest.TestCase):
         baseline = {'retrieval': {'recall_at_2': 0.9}}
         candidate = {'retrieval': {'recall_at_2': 0.8}}
         self.assertAlmostEqual(metric_deltas(baseline, candidate)['retrieval.recall_at_2'], -0.1)
+
+    def test_report_shows_before_after_and_failure(self):
+        report = render_report(
+            {'retrieval': {'recall_at_2': 0.9}},
+            {'retrieval': {'recall_at_2': 0.7}},
+            max_regression=0.01,
+        )
+        self.assertIn('| retrieval.recall_at_2 | 0.9000 | 0.7000 | -0.2000 | Fail |', report)
+        self.assertIn('**Decision:** FAIL', report)
+
+    def test_manifest_requires_traceable_model_and_evidence_files(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = {
+            'id': 'candidate', 'description': 'test', 'config_paths': ['config/init_config.yaml'],
+            'models': {'generator': 'mistral', 'embedding': 'nomic', 'reranker': 'bge'},
+            'dataset': 'evaluation/datasets/smoke.json',
+            'predictions': 'evaluation/fixtures/smoke_predictions.json',
+            'baseline': 'evaluation/baselines/smoke.json', 'k': 2, 'max_regression': 0.001,
+        }
+        self.assertEqual(validate_manifest(manifest, root), [])
 
 
 if __name__ == '__main__':
