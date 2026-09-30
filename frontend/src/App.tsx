@@ -72,6 +72,7 @@ const Sidebar = ({ isOpen, onClose, userRole }: { isOpen: boolean; onClose: () =
     { path: '/metrics', icon: BarChart3, label: 'Metrics', adminOnly: true },
     { path: '/history', icon: Clock, label: 'History', adminOnly: true },
     { path: '/receipts', icon: Shield, label: 'Decision Receipts', adminOnly: true },
+    { path: '/experiments', icon: BarChart3, label: 'Experiments', adminOnly: true },
     { path: '/models', icon: Cpu, label: 'LLM Settings', adminOnly: true },
     { path: '/settings', icon: Settings, label: 'Configuration', adminOnly: true },
   ];
@@ -136,6 +137,7 @@ const Breadcrumb = () => {
     '/models': 'LLM Settings',
     '/settings': 'Configuration',
     '/receipts': 'Decision Receipts',
+    '/experiments': 'Experiments',
   };
 
   return (
@@ -172,6 +174,31 @@ const ReceiptsPage = () => {
       <div className="receipt-meta">{receipt.response.sources.length} source(s) · {receipt.runtime.models?.rerank_model || 'configured reranker'} · review: {receipt.review.status}</div>
       <div className="receipt-actions"><button onClick={() => sendFeedback(receipt.id, 'correct')} disabled={receipt.review.status === 'confirmed'}><Check size={14} /> Correct</button><button onClick={() => sendFeedback(receipt.id, 'needs_review')}><Eye size={14} /> Review</button><button onClick={() => sendFeedback(receipt.id, 'incorrect')}><XCircle size={14} /> Incorrect</button></div>
     </article>)}</div>}
+  </div>;
+};
+
+const ExperimentsPage = () => {
+  const [data, setData] = useState<any>({ experiments: [] });
+  const [candidateCount, setCandidateCount] = useState(0);
+  const [message, setMessage] = useState('');
+  const load = useCallback(async () => {
+    const [experiments, candidates] = await Promise.all([api.getExperiments(), api.getLearningCandidates()]);
+    setData(experiments); setCandidateCount(candidates.total);
+  }, []);
+  useEffect(() => { load().catch((err) => setMessage(err.message)); }, [load]);
+  const exportCases = async () => {
+    try { const result = await api.exportLearningCandidates(); setMessage(`Exported ${result.cases} reviewed cases · ${result.sha256.slice(0, 12)}…`); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'Export failed'); }
+  };
+  return <div className="page-content experiments-page">
+    <div className="page-header"><div><h1>Experiments & Learning</h1><p>Versioned benchmark comparisons and human-reviewed cases awaiting dataset review.</p></div><button className="btn-secondary" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div>
+    <div className="experiment-summary"><div><span>Reviewed candidates</span><strong>{candidateCount}</strong></div><div><span>Committed experiments</span><strong>{data.experiments.length}</strong></div><button className="btn-primary" onClick={exportCases} disabled={!candidateCount}>Export reviewed cases</button></div>
+    {message && <div className="trust-note">{message}</div>}
+    <div className="experiment-list">{data.experiments.map((experiment: any) => <article className="receipt-card" key={experiment.id}>
+      <div className="receipt-card-header"><div><span className="receipt-id">{experiment.id}</span><span className={`evidence-status ${experiment.passed ? 'supported' : 'insufficient_evidence'}`}>{experiment.passed ? 'gate passed' : 'gate failed'}</span></div><span className="receipt-meta">tolerance {experiment.max_regression}</span></div>
+      <p className="receipt-query">{experiment.description}</p><div className="receipt-meta">Config: {experiment.config_paths.join(', ')}</div>
+      <div className="metric-grid">{Object.entries(experiment.deltas).map(([metric, delta]: any) => <div key={metric}><span>{metric}</span><strong className={delta < 0 ? 'metric-negative' : 'metric-positive'}>{delta >= 0 ? '+' : ''}{delta.toFixed(4)}</strong></div>)}</div>
+    </article>)}</div>
   </div>;
 };
 
@@ -2641,6 +2668,7 @@ function AppContent({ user, setUser }: { user: UserType; setUser: (u: UserType |
               <Route path="/metrics" element={<MetricsPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/receipts" element={<ReceiptsPage />} />
+              <Route path="/experiments" element={<ExperimentsPage />} />
               <Route path="/models" element={<LLMPage />} />
               <Route path="/settings" element={<ConfigPage />} />
             </>

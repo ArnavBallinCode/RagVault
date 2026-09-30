@@ -1,0 +1,15 @@
+{
+  "id": "runtime-baseline",
+  "description": "Versioned smoke baseline for the configured local RAG runtime.",
+  "config_paths": ["config/init_config.yaml", "config/process_config.yaml"],
+  "models": {
+    "generator": "Mistral-Nemo-Instruct-2407.Q5_K_M",
+    "embedding": "nomic-embed-text-v1.5",
+    "reranker": "bge-reranker-v2-m3"
+  },
+  "dataset": "evaluation/datasets/smoke.json",
+  "predictions": "evaluation/fixtures/smoke_predictions.json",
+  "baseline": "evaluation/baselines/smoke.json",
+  "k": 2,
+  "max_regression": 0.001
+}
