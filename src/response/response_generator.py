@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 import logging
 from queue import Queue
 import threading
+import os
 
 class ResponseGenerator:
     """
@@ -51,7 +52,10 @@ class ResponseGenerator:
         self.llm_lock = threading.Lock()
         
         # Initialize primary LLM instance
-        self.llm = Llamafile(base_url=self.config["retrieval"]["llamafile_server_base_url"], seed=2024)
+        # Docker and remote deployments override the local-development URL
+        # without mutating the checked-in processing configuration.
+        base_url = os.getenv("RAGVAULT_LLM_URL", self.config["retrieval"]["llamafile_server_base_url"])
+        self.llm = Llamafile(base_url=base_url, seed=2024)
 
     def generate_answer(self, 
                        query: str,
