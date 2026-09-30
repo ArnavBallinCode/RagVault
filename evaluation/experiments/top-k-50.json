@@ -1,0 +1,15 @@
+{
+  "id": "top-k-50",
+  "description": "Demonstration configuration experiment: reduce the hybrid retrieval candidate pool from 100 to 50 while preserving the smoke benchmark result.",
+  "config_paths": ["config/process_config.yaml"],
+  "models": {
+    "generator": "Mistral-Nemo-Instruct-2407.Q5_K_M",
+    "embedding": "nomic-embed-text-v1.5",
+    "reranker": "bge-reranker-v2-m3"
+  },
+  "dataset": "evaluation/datasets/smoke.json",
+  "predictions": "evaluation/candidates/top-k-50.json",
+  "baseline": "evaluation/baselines/smoke.json",
+  "k": 2,
+  "max_regression": 0.001
+}
