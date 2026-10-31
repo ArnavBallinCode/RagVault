@@ -137,3 +137,4 @@ urllib3==2.6.3
 XlsxWriter==3.2.0
 yarl==1.17.1
 streamlit==1.40.0
+unilimit==0.1.1; python_version >= "3.11"

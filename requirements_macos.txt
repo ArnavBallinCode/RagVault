@@ -133,3 +133,4 @@ uvicorn[standard]>=0.30.0
 XlsxWriter>=3.2.0
 yarl>=1.17.0
 streamlit>=1.40.0
+unilimit>=0.1.1; python_version >= "3.11"
